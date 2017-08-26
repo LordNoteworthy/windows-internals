@@ -61,4 +61,10 @@
 * Microkernel exports two different types of kernel objects (distinct from the Object Manager objects):
     - Dispatcher objects: used for scheduling and synchronization. (events, semaphores, mutexes and  timers ...).
     - Control objects: control specific aspects of system operation (APCs, DPCs, Interrupts).
-    
+
+#### Hardware Abstraction Layer (HAL):
+* Helps providing processor architecture independence on Windows (portability) by implementing platform specific differences.
+* Provides a standard interface (which does not change from hardware platform to hardware platform) which all other executive level components access system resources (Like I/O architecture, DMA operations, Firmware and BIOS interfacing, Interrupt management ...).
+* Examples:
+    - HAL provides to device drivers routines as - READ_PORT_UCHAR() or WRITE_PORT_UCHAR() - to allow them to read/write their devices' port without worrying about the underlying architecture.
+    - Processor architectures varies widely on handling priorities of hardware logical interrupts. HAL asbtract these priorities using Interrupt Request Level (IRQL) which are a set of symbolic values ranging from the IRQL_PASSIVE_LEVEL (lowest, used by user mode applications) to IRQL_HIGH_LEVEL which is the highest possible IRQL.
