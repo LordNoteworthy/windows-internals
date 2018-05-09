@@ -149,3 +149,32 @@
 - HARDWARE:  describes the current hardware configuration, including resources that have been reserved for use by a particular device by its device driver. This key is entirely dynamic and is reconstructed each time the system boots.
 - SOFTWARE: describes the configuration state and information for the various software packages installed on the system.
 - SYSTEM: contains all static configuration information, and is of particular interest to device drivers because it includes the static configuration information about which drivers can be loaded on this system. The actual system startup information is maintained as a `control set`. Each control set describes the parameters to use when initializing the system, the drivers and services to load, and other information essential to proper configuration of the system as it is booted.
+
+#### Dispatching and Scheduling
+* __Dispatching__ is the way the OS switches between threadsm the units of execution on Windows NT. As such, dispatching is distinct fom the act of __scheduling__, which is the determination of the next thread to run on a given CPU.
+* Typical states for threads are as follows:
+	- Wait. A thread in the wait state is blocked fom running until some event (or set of events) occurs.
+	- Ready. A thread in the ready state is eligible to run but must wait until NT decides to schedule it.
+	- Running. A thread in the running state is presently active on some CPU in the system.
+* The `_ETHREAD` structure keeps track of all threads, regardless of their state. If the thread is waiting to run because it is ready, it will be tracked via the __ready queue__, which is a kernel data structure used to track threads while they await being scheduled.
+* When the thread is running, the *kernel's processor control block*, the `_KPRCB` (which is referenced fom the `PCR`) identifes which thread is active at the time, as well as two other threads-the next thread to run and the idle thread.
+* When the kernel switches from one thread to another thread, it stores the current thread's context, such as the contents of various CPU registers. The kernel then loads the new context, such as those CPU registers, of the next thread to run. This is done by the routine `KiSwapThread()`.
+* Another routine that is called to perform dispatching is `KiSwitchToThread()`. This function dispatches to a particular thread.
+* The code within the kernel that is responsible fr dispatching control to a new thread always runs at or above IRQL __DISPATCH_LEVEL__. This is necessary because there are a number of intermediate states, such as when the registers for the threads are being restored, where it is not saf to allow for arbitrary *preemption*. Thus, we typically describe the dispatcher as running at IRQL __DISPATCH_LEVEL__.
+* A __priority__ is a numeric value that indicates the relative importance of a particular thread with respect to scheduling. 
+* There are actually two priority fields:
+	- Priority. The value for this field is the current numeric value that will actually be used for scheduling.
+	- BasePriority. The value for this field indicates the minimum value for Priority. In other words, the OS can adjust the Priority of a given thread arbitrarily, as long as it is equal to or greater than the BasePriority value for that thread.
+* On Windows NT, numeric priority values range between __0__ and __31__ , although the value 0 is reserved by the OS. Thus, no threads, except specially designated OS threads, may use this priority. This range is divided into two categories: __dynamic__ priorities and __real-time__ priorities.
+* Dynamic priorities are values between 1 and 15. They are referred to as "dynamic" because the OS varies the priority of threads in this range. Thus, for example, it is not possible for a thread in this range to *steal* the CPU and cause starvation of other threads that are waiting to run.
+* Real-time priorities are values between 16 and 31 . They are referred to as *real-time* because the OS does not vary the priority of threads in this range. Real-time range threads can continue to control the CPU, as long as no other threads of equal or higher priority are scheduled. Thus, it is possible for a real-time thread to *steal* the CPU and cause starvation of other threads that are waiting to run.
+* For either dynamic or real-time priorities, the __BasePriority__ is established when the thread is first created and may be programmatically adjusted via such calls as `KeSetBasePriorityThread()`.
+* For dynamic threads, the __Priority__ starts out equal to the __BasePriority__ , but may be adjusted by the OS. For example during I/O completion `IoCompleteRequest()`, `KeSetEvent()`, Quantum exhaustion.
+* For real-time threads, the OS never adjusts the Priority value, although it can be changed programmatically, such as with the call `KeSetPriorityThread()`.
+* `!ready 0` displays ready threads.
+* `thread`
+* `!pcr` describing the current state of this processor. From the PCR, you can see the value of CurrentThread (0x8058DBE0), NextThread (0x0), and IdleThread (0x80145A80)-these values were extracted from the KPRCB via the PCR.
+* Windows NT is a pre-emptive, multithreaded, and multitasking OS. It employs a traditional OS technique to provide this multitasking capability by associating a __quantum__ with each thread when it starts running. This quantum is the period of time that this particular thread will execute.
+* The precise value of the quantum for a given thread depends upon the particular version and type of Windows NT system. For example, on one Windows NT v4 system, the quantum for all threads on a server system was 120 milliseconds. 
+* When a thread fnishes its quantum and a new thread is scheduled to run, the thread has been __pre-empted__. A thread being pre-empted moves fom the running state to the ready state. This is different fom when a thread dispatches when a thread dispatches, it moves fom the running state to the waiting state.
+* When the OS pre-empts one thread so that another thread may run, the currently running thread transitions fom the running state to the ready state. For real-time threads, the OS does not adjust the Priority value. For dynamicthreads, the OS adjusts the Priority value by decreasing it by *PriorityDecrement + 1*.
