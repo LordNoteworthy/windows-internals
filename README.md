@@ -132,3 +132,20 @@
 * Probing: is the process of ensuring that a V-to-P mapping `is valid`.
 * Locking: is the process of ensing that a valid V-to-P mapping `remains valid`. See MmProbeAndLockPages().
 * Memory Descriptor Lists (MDL): is a structure used by the memory manager to describe a set of physical pages that make up the user application's virtual buffer. (See MmGetSystemAddressForMDL()).
+
+#### The Registry
+* The Registry is nothing more than a database of configuration and administrative information about the operating system and related utilities.
+* Although the Registry is described as if it were a single component, it is in fact constructed by combining several independent components called `hives` into a single, coherent namespace. 
+* The Registry is organized into a series of different top-level keys. Each key represents a distinct type of information. In Windows NT, the standard top-level keys are as follows:
+- HKEY_CLASSES_ROOT: This key indicates special handling for various file extensions.
+- HKEY_CURRENT_USER: This key indicates configuration information for the current logged-on user.
+- HKEY_CURRENT_CONFIG: This key indicates miscellaneous configuration state.
+- HKEY_LOCAL_MACHINE: Of interest to device driver writers, this key indicates system state.
+- HKEY_USERS: This key provides local information on this machine about users.
+* Registry keys may in fact be links to other keys. While reading the contents of the Registry, these links point to other parts of the Registry. For example, the HKEY_CURRENT_USER key points to the correct entry in the HKEY_USERS portion of the Registry.
+* One technique you can use when managing wide strings is to maintain them by using the UNICODE_STRING structure, but ensure that there is an additional wide character at the end of the Buffer pointed to by the structure. 
+* In this case, the Length field in the structure indicates the size in bytes of the string stored within the Buffer , while the MaximumLength field will indicate a size of at least two bytes more than the Length {because it requires two bytes to store a single null wide character terminator).
+* For device driver developers, there are only a few keys of general interest within the Registry. These keys are located within the HKEY_LOCAL_MACHINE top-level key:
+- HARDWARE:  describes the current hardware configuration, including resources that have been reserved for use by a particular device by its device driver. This key is entirely dynamic and is reconstructed each time the system boots.
+- SOFTWARE: describes the configuration state and information for the various software packages installed on the system.
+- SYSTEM: contains all static configuration information, and is of particular interest to device drivers because it includes the static configuration information about which drivers can be loaded on this system. The actual system startup information is maintained as a `control set`. Each control set describes the parameters to use when initializing the system, the drivers and services to load, and other information essential to proper configuration of the system as it is booted.
