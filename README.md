@@ -137,11 +137,11 @@
 * The Registry is nothing more than a database of configuration and administrative information about the operating system and related utilities.
 * Although the Registry is described as if it were a single component, it is in fact constructed by combining several independent components called `hives` into a single, coherent namespace. 
 * The Registry is organized into a series of different top-level keys. Each key represents a distinct type of information. In Windows NT, the standard top-level keys are as follows:
-- HKEY_CLASSES_ROOT: This key indicates special handling for various file extensions.
-- HKEY_CURRENT_USER: This key indicates configuration information for the current logged-on user.
-- HKEY_CURRENT_CONFIG: This key indicates miscellaneous configuration state.
-- HKEY_LOCAL_MACHINE: Of interest to device driver writers, this key indicates system state.
-- HKEY_USERS: This key provides local information on this machine about users.
+	- HKEY_CLASSES_ROOT: This key indicates special handling for various file extensions.
+	- HKEY_CURRENT_USER: This key indicates configuration information for the current logged-on user.
+	- HKEY_CURRENT_CONFIG: This key indicates miscellaneous configuration state.
+	- HKEY_LOCAL_MACHINE: Of interest to device driver writers, this key indicates system state.
+	- HKEY_USERS: This key provides local information on this machine about users.
 * Registry keys may in fact be links to other keys. While reading the contents of the Registry, these links point to other parts of the Registry. For example, the HKEY_CURRENT_USER key points to the correct entry in the HKEY_USERS portion of the Registry.
 * One technique you can use when managing wide strings is to maintain them by using the UNICODE_STRING structure, but ensure that there is an additional wide character at the end of the Buffer pointed to by the structure. 
 * In this case, the Length field in the structure indicates the size in bytes of the string stored within the Buffer , while the MaximumLength field will indicate a size of at least two bytes more than the Length {because it requires two bytes to store a single null wide character terminator).
@@ -177,4 +177,49 @@
 * Windows NT is a pre-emptive, multithreaded, and multitasking OS. It employs a traditional OS technique to provide this multitasking capability by associating a __quantum__ with each thread when it starts running. This quantum is the period of time that this particular thread will execute.
 * The precise value of the quantum for a given thread depends upon the particular version and type of Windows NT system. For example, on one Windows NT v4 system, the quantum for all threads on a server system was 120 milliseconds. 
 * When a thread fnishes its quantum and a new thread is scheduled to run, the thread has been __pre-empted__. A thread being pre-empted moves fom the running state to the ready state. This is different fom when a thread dispatches when a thread dispatches, it moves fom the running state to the waiting state.
-* When the OS pre-empts one thread so that another thread may run, the currently running thread transitions fom the running state to the ready state. For real-time threads, the OS does not adjust the Priority value. For dynamicthreads, the OS adjusts the Priority value by decreasing it by *PriorityDecrement + 1*.
+* When the OS pre-empts one thread so that another thread may run, the currently running thread transitions fom the running state to the ready state. For real-time threads, the OS does not adjust the Priority value. For dynamicthreads, the OS adjusts the Priority value by decreasing it by *PriorityDecrement+1*.
+
+#### Interrupt Request Levels and DPCs
+* IRQLs are the chief method used for __prioritizing__ OS activities within Windows NT. 
+* The relative priority of an activity within the Windows NT operating system is defined by its __Interrupt Request Level (IRQL)__.
+* The current processor's IRQL indicates the relative priority of the activity currently taking place on that CPU.
+* IRQL values are assigned to both sofware and hardware activities, with sofware IRQLs being lower than hardware IRQLs.
+* If an event occurs on a given processor that has a higher IRQL than the processor's current IRQL, the higher-priority event will interrupt the lower-priority event.
+*  If an event with an IRQL lower than the processor's current IRQL occurs on that CPU, processing of that event waits until all other events at higher IRQLs have been processed.
+* Thus, the processor's current IRQL functions as an interrupt mask, deferring (masking) those activities requested at the same or lower IRQLs than the processor's current IRQL.
+* The lower-level IRQLs (IRQLs __PASSIVE_LEVEL__ through __DISPATCH_LEVEL__) are used internally for synchronization of the OS software. These IRQLs are modeled as __software interrupts__. IRQLs above __DISPATCH_LEVEL__, whether they have a specific mnemonic or not, reflect __hardware-interrupt__ priorities. Thus, these hardware IRQLs are often referred to as Device IRQLs (or __DIRQLs__).
+* A very important point to understand is that IRQLs are not the same as Windows NT process-scheduling priorities.
+* Scheduling priorities are artifcts of the Windows NT Dispatcher, which uses them to determine which thread to next make active. IRQLs, on the other hand, are best thought of as *interrupt priorities* used by the OS. An interrupt at any IRQL above __PASSIVE_LEVEL__ will interrupt even the highest-priority User mode thread in the system.
+* The current IRQL is tracked on a per-CPU basis. A Kernel mode routine can determine the IRQL at which it is running by calling the function `KeGetCurrentIrql()`.
+* Kernel mode routines may change the IRQL at which they are executing by calling the functions `KeRaiseIrql()` and `KeLowerIrql()`.
+* Because IRQLs are a method of synchronization, most Kernel mode routines (specifically, device drivers) must __never__ lower their IRQL beyond that at which they were called.
+* How the most common IRQLs are used within Windows NT:
+	- IRQL PASSIVE_LEVEL is the ordinary IRQL of execution in the OS, both in User mode and Kernel mode. A routine running at IRQL PASSIVE_LEVEL is subject to interruption and pre-emption by almost anything else happening in the system.
+	- IRQL APC_LEVEL is used by Kernel mode routines to control re-entrancy when processing Asynchronous Procedure Calls (APCs) in Kernel mode. Exampe: IO completion.
+	- IRQL DISPATCH_LEVEL is used within Windows NT for two different activities:
+		- Processing Deferred Procedure Calls (DPCs)
+		- Running the Dispatcher (NT's scheduler): The Windows NT Dispatcher receives requests to perform a reschedule operation at IRQL DISPATCH_LEVEL.
+* When code is executing at IRQL __DISPATCH_LEVEL__ or above, it cannot wait for any Dispatcher Objects that are not already signaled. Thus, for example, code running at IRQL DISPATCH_LEVEL or above cannot wait for an event or mutex to be set.
+* When code running at IRQL __DISPATCH_LEVEL__ or above may not take any __page faults__. This means that any such code must itself be __non-paged__, and must touch only data structures that are non-paged.
+* A vitally important point about __DIRQLs__ is that these IRQLs do not necessarily preserve the relative priorities that may be implied by a given bus's external interrupt signaling method. For example, the HAL has complete discretion in terms of how it maps IRQs (bus Interrupt ReQuest lines) to IRQLs.
+* The relationship between two IRQs assigned to two particular devices is not necessarily *preserved* when IRQLs are assigned to those devices. Whether a device with a more important IRQ is assigned a higher (that is, more important) IRQL is totally up to the HAL. Indeed, in most standard x86 multiprocessor HALs for systems that use APIC architectures, the reltionship of IRQ to IRQL is not preserved.
+* IRQL __HIGH_LEVEL__ is always defined as the highest IRQL on a Windows NT system. This IRQL is used for __NMI (Non-Maskable Interrupt)__ and other interrupts of very high priority. 
+* In the exceedingly rare case in which a device driver needs to disable interrupts on a particular processor for a short period, the driver may raise its IRQL to HIGH_LEVEL. However, a device driver raising to IRQL HIGH_LEVEL is considered a very drastic step, and it is almost never required in Windows NT.
+* In addition to its use for running the NT Dispatcher, IRQL DISPATCH_LEVEL is also used for processing __Defrred Procedure Calls (DPCs)__.
+* DPCs are callbacks to routines to be run at IRQL DISPATCH_LEVEL. DPCs are typically requested from higher IRQLs to allow more extended, non-time-critical, processing to take place.
+* Use cases of DPC:
+	- Windows NT device drivers perform very little processing within their ISR. Instead, when a device interrupts (at DIRQL) and its driver determines that a significant amount of processing is required, the driver requests a DPC. The DPC request results in a specified driver function being called back at IRQL DISPATCH_LEVEL to perform the remainder of the required processing. By performing this processing at IRQL DISPATCH_LEVEL, the driver takes less time at DIRQL, and therefore decreases interrupt latency for all the other devices on the system.
+	- Another common use for DPCs is in timer routines. A driver may request to have a particular function be called to notify it that a certain period of time has elapsed (this is done using the `KeSetTimer()` function).
+* A DPC is described by a DPC Object `_KDPC`. 
+* A DPC Object may be allocated by a driver fom any non-pageable space (such as nonpaged pool). DPC objects are initialized by using the function `KeInitializeDpc()`. 
+* A request to execute a particular DPC routine is made by placing the DPC Object that describes that DPC routine into the DPC Queue of a given CPU, and then requesting an IRQL DISPATCH_LEVEL software interrupt (this is done using `KeInsertQueueDpc()` function).
+* As noted earlier in the chapter, IRQL DISPATCH_LEVEL is used both for dispatching and for processing the DPC Queue. In NT V4, when a DISPATCH_LEVEL interrupt is processed, the entire DPC Queue is __serviced first__ (by the microkernel), and then the Dispatcher is called to schedule the next thread to run. This is reasonable because the processing done within a DPC routine could change to alter the state of the thread scheduling database, for example, by making a previously waiting thread runnable.
+* A single DPC routine may be actively executing on multiple processors at the same time. There is absolutely no interlocking performed by the Microkernel to prevent this hence the importance of utilizing the proper set of multiprocessor synchronization mechanisms in drivers. Specifically, __spin locks__ must be used to serialize access to any data structures that must be accessed atomically within the driver's DPC if the driver's design is such that multiple DPCs can be in progress simultaneously.
+* Each DPC Object has an __importance__, which is stored in the DPC Object's Importance feld. The importance of a DPC Object affects where in the DPC Queue the DPC Object is placed when it is queued, and whether or not an IRQL DISPATCH_LEVEL interrupt is issued when the DPC Object is queued.
+* `KeInitializeDpc()` initializes DPC Objects with __Medium__ importance. The Importance of a DPC Object can be set by using the function `KeSetImportanceDpc()`.
+* In addition to an importance, each DPC Object has a *target processor*. This target processor is stored in the `Number` field of the DPC Object. The target processor indicates whether or not a DPC is restricted to execute on a given processor on the system, and, if so, on which processor.
+* By default, `KeInitializeDpc()` does not specify a target processor. Consequently, by default, DPCs will run on the processor on which they were requested (that is, the DPC will be invoked on the processor on which `KeInsertQueueDpc()` was called).
+* A DPC may be restricted to executing on a specific processor using the `KeSetTargetProcessorDpc()` function.
+* To make it easy for device drivers to request DPCs for ISR completion fom their ISRs, the IO Manager defines a specific DPC that may be used for this purpose. This DPC is called the __DpcForIsr__.
+* Because all device drivers have Device Objects, and all drivers that utilize interrupts also utilize DPCs, using the IO Manager's DpcForIsr mechanism is very convenient. In fact, most device drivers in Windows NT never directly call `KeInitializeDpc()` or `KeInsertQueueDpc()` , but call `IoInitializeDpcRequest()` and
+`IoRequestDpc()` instead.
