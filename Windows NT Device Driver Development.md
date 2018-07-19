@@ -243,4 +243,31 @@
 * Interrupt Spin Locks, which are sometimes referred to as ISR spin locks, are the rarer of the two types of spin locks on Windows NT.
 * Interrupt Spin Locks operate at a DIRQL, specifically the _SynchronizeIrql_ that is specified when a driver calls `IoConnectInterrupt()`.
 * The Interrupt Spin Lock for a particular interrupt service routine is always acquired by the Microkernel prior to its calling the interrupt service routine.
-* Driver routines other than the interrupt service routine may acquire a particular Interrupt Spin Lock by calling `KeSynchronizeExecution()`. 
+* Driver routines other than the interrupt service routine may acquire a particular Interrupt Spin Lock by calling `KeSynchronizeExecution()`.
+
+
+#### The IO Manager
+* The major design characteristics of the Windows NT I/0 Subsystem:
+	- Consistent and highly structured
+	- Portable across processor architectures
+	- Configurable
+	- As frequently pre-emptible and interruptible as possible
+	- Multiprocessor safe on MP systems
+	- Object-based
+	- Asynchronous
+	- Packet-driven
+	- Layered
+* The Windows NT I/O Subsystem is based on a collection of "objects." These objects are defined by the Microkernel, HAL, and the I/O Manager and exported to other Kernel mode modules, including device drivers.
+* The NT operating system in general, and the I/0 Subsystem in particular, is _object-based_, but not necessarily _object-oriented_.
+*  Most objects used within the I/0 Subsystem are considered __partially opaque__. This means that a subset of fields within the object can be directly manipulated by kernel modules, including drivers. Examples of partially opaque objects include Device Objects and Driver Objects.
+* A few objects used within the I/0 Subsystem (such as DPC Objects or Interrupt Objects) are considered __fully opaque__. This means that Kernel mode modules (other than the creating module) must call functions that understand and manipulate the fields within the object.
+* Structures commonly used within the I/O subsystem: <p align="center"><img src="https://i.snag.gy/p6OI49.jpg"></p>
+* The File Object is defined by the NT structure `FILE_OBJECT`. A File Object represents a single open instance of a file, device, directory, socket, named pipe, mail slot, or other similar entity. 
+* The Driver Object describes where a driver is loaded in physical memory, the driver's size, and its main entry points. The format of a Driver Object is defined by the NT structure `DRIVER_OBJECT`.
+* The Device Object represents a physical or logical device that can be the target of an I/O operation. The format of the Device Object is defined by the NT structure `DEVICE_OBJECT`.
+* While a Device Object may be created at any time by a driver by calling `IoCreateDevice()` , Device Objects are normally created when a driver is first loaded.
+* When a driver creates a Device Object, it also specifies the size of the __Device Extension__ to be created. 
+* The Device Extension is a per-device area that is private to the device driver. The driver can use this area to store anything it wants, including device statistics, queues of requests, or other such data. The Device Extension is typically the main global data storage area.
+* Both the Device Object and Device Extension are created in non-paged pool.
+* The Interrupt Object is created by the I/0 Manager, and is used to connect a driver's interrupt service routine to a given interrupt vector. The structure, `KINTERRUPT`, is one of the few fully opaque structures used in the I/0 Subsystem.
+* The Adapter Object is used by all OMA drivers. It contains a description of the DMA device, and represents a set of shared resources. These resources may be a DMA channel or a set of DMA map registers.
