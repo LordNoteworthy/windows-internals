@@ -151,7 +151,7 @@
 - SYSTEM: contains all static configuration information, and is of particular interest to device drivers because it includes the static configuration information about which drivers can be loaded on this system. The actual system startup information is maintained as a `control set`. Each control set describes the parameters to use when initializing the system, the drivers and services to load, and other information essential to proper configuration of the system as it is booted.
 
 #### Dispatching and Scheduling
-* __Dispatching__ is the way the OS switches between threadsm the units of execution on Windows NT. As such, dispatching is distinct fom the act of __scheduling__, which is the determination of the next thread to run on a given CPU.
+* __Dispatching__ is the way the OS switches between threads, the units of execution on Windows NT. As such, dispatching is distinct fom the act of __scheduling__, which is the determination of the next thread to run on a given CPU.
 * Typical states for threads are as follows:
 	- Wait. A thread in the wait state is blocked fom running until some event (or set of events) occurs.
 	- Ready. A thread in the ready state is eligible to run but must wait until NT decides to schedule it.
@@ -160,7 +160,7 @@
 * When the thread is running, the *kernel's processor control block*, the `_KPRCB` (which is referenced fom the `PCR`) identifes which thread is active at the time, as well as two other threads-the next thread to run and the idle thread.
 * When the kernel switches from one thread to another thread, it stores the current thread's context, such as the contents of various CPU registers. The kernel then loads the new context, such as those CPU registers, of the next thread to run. This is done by the routine `KiSwapThread()`.
 * Another routine that is called to perform dispatching is `KiSwitchToThread()`. This function dispatches to a particular thread.
-* The code within the kernel that is responsible fr dispatching control to a new thread always runs at or above IRQL __DISPATCH_LEVEL__. This is necessary because there are a number of intermediate states, such as when the registers for the threads are being restored, where it is not saf to allow for arbitrary *preemption*. Thus, we typically describe the dispatcher as running at IRQL __DISPATCH_LEVEL__.
+* The code within the kernel that is responsible for dispatching control to a new thread always runs at or above IRQL __DISPATCH_LEVEL__. This is necessary because there are a number of intermediate states, such as when the registers for the threads are being restored, where it is not safe to allow for arbitrary *preemption*. Thus, we typically describe the dispatcher as running at IRQL __DISPATCH_LEVEL__.
 * A __priority__ is a numeric value that indicates the relative importance of a particular thread with respect to scheduling. 
 * There are actually two priority fields:
 	- Priority. The value for this field is the current numeric value that will actually be used for scheduling.
@@ -223,3 +223,24 @@
 * To make it easy for device drivers to request DPCs for ISR completion fom their ISRs, the IO Manager defines a specific DPC that may be used for this purpose. This DPC is called the __DpcForIsr__.
 * Because all device drivers have Device Objects, and all drivers that utilize interrupts also utilize DPCs, using the IO Manager's DpcForIsr mechanism is very convenient. In fact, most device drivers in Windows NT never directly call `KeInitializeDpc()` or `KeInsertQueueDpc()` , but call `IoInitializeDpcRequest()` and
 `IoRequestDpc()` instead.
+
+
+#### Multiprocessor Issues
+* Because Windows NT supports multiprocessing, all Kernel mode code must be multiprocessor-safe. Multiprocessor safety involves maintaining cache coherency among processors, virtual memory issues, and even interrupt handling. However, driver writers must be __careful__ to properly synchronize access to shared data structures. 
+* An appropriate Dispatcher Object, such as a __mutex__, can be used for synchronization to guard the shared data structure. This works fine, as long as all the threads that modify the data being shared execute only at __IRQL PASSIVE_LEVEL__ or __IRQL APC_LEVEL__. Thus, using a mutex would be a perfect solution for synchronizing access to data that is shared between two user threads because Usermode threads always execute at IRQL PASSIVE_LEVEL.
+* However, using a Dispatcher Object such as a mutex would not be possible if any thread that modifies the shared data is running at IRQL DISPATCH_LEVEL or above.
+* This is due to the fact that running at IRQL DISPATCH_LEVEL or higher blocks recognition of the DISPTACH_LEVEL interrupt that is used to trigger the Dispatcher. Thus, it is impossible for a thread running at IRQL DISPATCH_LEVEL or above to yield control of the processor to wait, in case the Dispatcher Object is not available.
+* Fortunately, there is a simple solution to sharing data when one or more of the modifying threads may be running at IRQL DISPATCH_LEVEL or above. The solution is to use a __spin locks__.
+* Spin locks are standard Windows NT data structures, located in nonpageable memory. Every spin lock has an IRQL implicitly associated with it. That IRQL is at least IRQL DISPATCH_LEVEL, and it is the highest IRQL fom which the lock may ever be acquired.
+* The reason spin locks have their name is that if the lock is not available, the thread that attempts to acquire the lock simply spins (or _busy waits_ as it is often called), repeatedly trying to acquire the lock until the lock is free. Of course, because this spinning occurs at IRQL DISPATCH_LEVEL or above, the processor on which the lock is being acquired is not dispatchable. Thus, even when the currently executing thread's quantum expires, the thread will continue running.
+* There are two kinds of spin locks: __Executive Spin Locks__ and __Interrupt Spin Locks__.
+* Executive Spin Locks are the type of spin lock most frequently used in an NT device driver. They are defined as data structure of type __KSPIN_LOCK__.
+* Executive Spin Locks operate at IRQL DISPATCH_LEVEL, and they are allocated from nonpaged pool. Then, they are initalized using `KeInitializeSpinLock()`.
+* Executive Spin Locks may be acquired by callers running at less than or equal to IRQL DISPATCH_LEVEL by calling `KeAcquireSpinlock()`.
+* Windows NT provides an optimized version of `KeAcquireSpinLock()` for use when the caller is already running at DISPATCH_LEVEL. This function is called `KeAcquireSpinLockAtDpcLevel()`.
+* Executive Spin Locks that were acquired with `KeAcquireSpinLock()` must be released using the function `KeReleaseSpinLock()`.
+* Executive Spin Locks that were acquired with the function `KeAcquireSpinLockAtDpcLevel()` must be released using the function `KeReleaseSpinLockFromDpcLevel()`.
+* Interrupt Spin Locks, which are sometimes referred to as ISR spin locks, are the rarer of the two types of spin locks on Windows NT.
+* Interrupt Spin Locks operate at a DIRQL, specifically the _SynchronizeIrql_ that is specified when a driver calls `IoConnectInterrupt()`.
+* The Interrupt Spin Lock for a particular interrupt service routine is always acquired by the Microkernel prior to its calling the interrupt service routine.
+* Driver routines other than the interrupt service routine may acquire a particular Interrupt Spin Lock by calling `KeSynchronizeExecution()`. 
