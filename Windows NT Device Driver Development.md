@@ -66,7 +66,7 @@
 * Helps providing processor architecture independence on Windows (portability) by implementing platform specific differences.
 * Provides a standard interface (which does not change from hardware platform to hardware platform) which all other executive level components access system resources (Like I/O architecture, DMA operations, Firmware and BIOS interfacing, Interrupt management ...).
 * Examples:
-    - HAL provides to device drivers routines as - READ_PORT_UCHAR() or WRITE_PORT_UCHAR() - to allow them to read/write their devices' port without worrying about the underlying architecture.
+    - HAL provides to device drivers routines as - `READ_PORT_UCHAR()` or `WRITE_PORT_UCHAR()` - to allow them to read/write their devices' port without worrying about the underlying architecture.
     - Processor architectures varies widely on handling priorities of hardware logical interrupts. HAL asbtract these priorities using Interrupt Request Level (IRQL) which are a set of symbolic values ranging from the IRQL_PASSIVE_LEVEL (lowest, used by user mode applications) to IRQL_HIGH_LEVEL which is the highest possible IRQL.
 
 
@@ -131,7 +131,7 @@
 	- Section object: used by the memory manager to track resources that are available to be memory-mapped into various address spaces.
 * Probing: is the process of ensuring that a V-to-P mapping `is valid`.
 * Locking: is the process of ensing that a valid V-to-P mapping `remains valid`. See MmProbeAndLockPages().
-* Memory Descriptor Lists (MDL): is a structure used by the memory manager to describe a set of physical pages that make up the user application's virtual buffer. (See MmGetSystemAddressForMDL()).
+* Memory Descriptor Lists (MDL): is a structure used by the memory manager to describe a set of physical pages that make up the user application's virtual buffer. (See `MmGetSystemAddressForMDL()`).
 
 #### The Registry
 * The Registry is nothing more than a database of configuration and administrative information about the operating system and related utilities.
@@ -271,3 +271,33 @@
 * Both the Device Object and Device Extension are created in non-paged pool.
 * The Interrupt Object is created by the I/0 Manager, and is used to connect a driver's interrupt service routine to a given interrupt vector. The structure, `KINTERRUPT`, is one of the few fully opaque structures used in the I/0 Subsystem.
 * The Adapter Object is used by all OMA drivers. It contains a description of the DMA device, and represents a set of shared resources. These resources may be a DMA channel or a set of DMA map registers.
+
+### I/O Architectures
+* Devices utilize different mechanisms to move data between the device and host memory. Windows NT places devices, and hence their drivers, into one of three major categories depending on their capabilities:
+* __Programmed I/O__: (PIO) devices are usually the simplest of the three main categories of devices. The driver for a PIO device is responsible for moving the
+	data between host memory and the device under program control. This characteristic is, in fact, what gives this category its name.
+	- A driver may access a PIO device via shared memory, memory space registers, or port 1/0 space registers. How the device is accessed depends on the device's design.
+	- _Accessing a shared memory buffer on a PIO device_: During initialization, the driver maps the device's memory buffer into kernel virtual address space via calls to the Memory Manager. To transfer data to the device, the driver moves the data under program control to a location within the device's memory buffer. The move would most likely be performed by using the HAL function `WRITE_REGISTER_BUFFER_ULONG ()`.
+	- _Accessing a memory space register on a PIO device_: During initialization, the driver will map the physical addresses that the device's memory space registers occupy into kernel virtual address space. The driver then accesses the device using the HAL routines `READ_REGISTER_ULONG ()` and `WRITE_REGISTER_ULONG ()`.
+	- _Accessing a port 110 space register on a PIO device_: The interface to the device in question is via a longword register in port I/O space. Because this register is not in memory space, the driver does not need to (and, in fact, cannot) map the register into kernel virtual address space. Instead, to access the port I/O space register, the driver uses the HAL `READ_PORT_ULONG ()` and `WRITE_PORT_ULONG ()` functions.
+	- Although each of the three aforementioned devices is accessed in a slightly different way, they all share one common attribute. To get data to the device or retrieve data from the device, the driver is required to __manually__ move the data under program control. This data movement consumes CPU cycles. So, while the driver is moving data between a requestor's buffer and a peripheral, the CPU is not being used to do other useful work, like processing a user's spreadsheet. This is the primary disadvantage of a PIO device.
+* __Busmaster DMA Devices__: The single characteristic that these devices have in common is that a Busmaster DMA device __autonomously__ transfers data between itself and host memory.
+	- The device driver for a Busmaster DMA device gives the device the starting logical address of the data to be transferred, plus the length and direction of the transfer; and the device moves the data itself without help from the host CPU.
+	- Windows NT categorizes Busmaster DMA devices as being one of two types. The specific functioning of a device's hardware determines into which category a given device falls. The two categories are:
+	- __Packet-Based DMA devices__ which are the most common type of Busmaster DMA device. Packet-Based DMA devices typically transfer data to/from __different logical addresses__ for each transfer, and __Common-Buffer DMA devices__ which typically utilize __the same buffer__ for all transfer operations. Many network interface cards are Common-Buffer DMA devices.
+	- __Packet-Based DMA devices__ which are the most common type of Busmaster DMA device. Packet-Based DMA devices typically transfer data to/from __different logical addresses__ for each transfer, and __Common-Buffer DMA devices__ which typically utilize __the same buffer__ for all transfer operations. Many network interface cards are Common-Buffer DMA devices.
+* DMA operations from devices on a Windows NT system are performed to __logical addresses__. These logical addresses are managed by the HAL, and correlate to physical host memory addresses in a hardware-specific and HAL-specific manner. 
+* Logical addresses are translated to host memory physical addresses by the HAL through the use of _map registers_. 
+* A device bus has a logical address space, managed by the HAL, which is different from the physical address space used for host memory. When processing a DMA transfer request, a device driver calls the 1/0 Manager and HAL (using the function `IoMapTransfer ()`) to allocate a set of map registers, and program them appropriately to perform the DMA data transfer.
+* s a logical address space, managed by the HAL, which is different from the physical address space used for host memory. When processing a DMA transfer request, a device driver calls the 1/0 Manager and HAL (using the function `IoMapTransfer ()`) to allocate a set of map registers, and program them appropriately to perform the DMA data transfer.
+* It is important to understand that map registers are part of the HAL's standard abstraction of system facilities. How the logical addresses used in DMA operations are implemented, including how these logical addresses are translated to physical addresses and thus even how map registers themselves are implemented, is entirely a function of how a particular HAL is implemented on a given platform.
+ * Because Windows NT uses virtual memory, the physical memory pages that comprise a requestor's data buffer need not be contiguous in host memory.
+* Simple DMA devices are capable of transferring data by using only a __single logical base address and length pair__. Therefore, drivers for such devices must reprogram the device for each logical buffer fragment in the requestor's buffer. This can require both _extra overhead and latency_.
+* More-sophisticated DMA devices support an optional feature called __scatter/gather__. This feature, also known as _DMA chaining_ allows the device to be programmed with multiple pairs of base addresses and lengths simultaneously. Thus, even a logically fragmented requestor's buffer can be described to the DMA device by its driver in one operation.
+* To help reduce the overhead required to support devices that do not implement scatter/gather, the HAL implements a facility known as __system scatter/gather__. To implement this feature, the HAL utilizes its map registers to create a single, contiguous, logical address range that maps to the requestor's noncontiguous buffer in physical memory. This contiguous logical address range can then be addressed by a device that does not support scatter/gather with a single logical base address and length.
+* __System DMA Devices__ provides the capability for a device on the system to use a common DMA controller to perform transfers between itself and host memory.
+	- This capability results in a device that is inexpensive (like a PIO device), but that can move data without using host CPU cycles (like Busmaster DMA). 
+	- System DMA, as it is supported in Windows NT, is very much like Busmaster DMA, with the following exceptions:
+		- System DMA devices share a DMA controller that is provided as part of the system, whereas Busmaster DMA devices have a dedicated DMA controller built into their devices.
+		- System DMA devices do not support scatter/gather.
+		- The HAL programs the System DMA controller; the device then utilizes the functionality of the System DMA controller to transfer data between itself and host memory.
