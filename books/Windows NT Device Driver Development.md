@@ -279,7 +279,7 @@
 	- A driver may access a PIO device via shared memory, memory space registers, or port 1/0 space registers. How the device is accessed depends on the device's design.
 	- _Accessing a shared memory buffer on a PIO device_: During initialization, the driver maps the device's memory buffer into kernel virtual address space via calls to the Memory Manager. To transfer data to the device, the driver moves the data under program control to a location within the device's memory buffer. The move would most likely be performed by using the HAL function `WRITE_REGISTER_BUFFER_ULONG ()`.
 	- _Accessing a memory space register on a PIO device_: During initialization, the driver will map the physical addresses that the device's memory space registers occupy into kernel virtual address space. The driver then accesses the device using the HAL routines `READ_REGISTER_ULONG ()` and `WRITE_REGISTER_ULONG ()`.
-	- _Accessing a port 110 space register on a PIO device_: The interface to the device in question is via a longword register in port I/O space. Because this register is not in memory space, the driver does not need to (and, in fact, cannot) map the register into kernel virtual address space. Instead, to access the port I/O space register, the driver uses the HAL `READ_PORT_ULONG ()` and `WRITE_PORT_ULONG ()` functions.
+	- _Accessing a port I/O space register on a PIO device_: The interface to the device in question is via a longword register in port I/O space. Because this register is not in memory space, the driver does not need to (and, in fact, cannot) map the register into kernel virtual address space. Instead, to access the port I/O space register, the driver uses the HAL `READ_PORT_ULONG ()` and `WRITE_PORT_ULONG ()` functions.
 	- Although each of the three aforementioned devices is accessed in a slightly different way, they all share one common attribute. To get data to the device or retrieve data from the device, the driver is required to __manually__ move the data under program control. This data movement consumes CPU cycles. So, while the driver is moving data between a requestor's buffer and a peripheral, the CPU is not being used to do other useful work, like processing a user's spreadsheet. This is the primary disadvantage of a PIO device.
 * __Busmaster DMA Devices__: The single characteristic that these devices have in common is that a Busmaster DMA device __autonomously__ transfers data between itself and host memory.
 	- The device driver for a Busmaster DMA device gives the device the starting logical address of the data to be transferred, plus the length and direction of the transfer; and the device moves the data itself without help from the host CPU.
@@ -301,3 +301,66 @@
 		- System DMA devices share a DMA controller that is provided as part of the system, whereas Busmaster DMA devices have a dedicated DMA controller built into their devices.
 		- System DMA devices do not support scatter/gather.
 		- The HAL programs the System DMA controller; the device then utilizes the functionality of the System DMA controller to transfer data between itself and host memory.
+
+
+#### How I/O Requests Are Described
+* Windows NT describes I/O requests by using a packet-based architecture. In this approach, each I/O request to be performed can be described by using a single __I/O Request Packet__ (IRP).
+* When an I/O system service is issued (such as a request to create or read froma file), the I/O Manager services that request by building an IRP describing the request, and then passes a pointer to that IRP to a device driver to begin processing the request.
+* An IRP contains all the information necessary to fully describe an I/O request to the I/O Manager and device drivers. The IRP is a standard NT structure of type "IRP.": <p align="center"><img src="https://i.snag.gy/cnjJym.jpg"  width="300px" height="auto"></p>
+* As you can see in the figure above, each I/O Request Packet may be thought of as having two parts: A __fixed__ part and an I/O Stack.
+* The fixed part of the IRP contains information about the request that either does not vary from driver to driver, or it does not need to be preserved when the IRP is passed from one driver to another.
+* The I/O Stack contains a set of __I/O Stack locations__, each of which holds information specific to each driver that may handle the request.
+* Each I/O Stack location in an IRP contains information for a specific driver about the I/O request. The I/O Stack location is defined by the structure `IO_STACK_LOCATION`.
+* To locate the current I/O Stack location within a given IRP, a driver calls the function `IoGetCurrentIrpStackLocation()`.
+* Windows NT provides driver writers with the following three different options for describing the requestor's data buffer associated with an I/O operation:
+	- __Direct I/O__: The buffer may be described in its original location in the requestor's physical address space by a structure called a Memory Descriptor List (MDL), which describes the physical addresses of the requestor's user mode virtual addresses.
+	- __Buffered I/O__: The data from the requestor's buffer may be copied from the requestor's address space into an intermediate location in system address space (by the I/O Manager before the driver gets the IRP), and the driver is provided a pointer to this copy of the data.
+	- __Neither I/O__: The driver is provided with the requestor's virtual address of the buffer.
+* _Describing Data Buffers with Direct I/O_:
+	- If a driver chooses Direct I/O, any data buffer associated with read or write I/O requests will be described by the I/O Manager by using an opaque structure called a Memory Descriptor List (MDL).
+	- MDL is capable of describing a single data buffer that is contiguous in virtual memory, but is not necessarily physically contiguous.
+	- An MDL is designed to make it particularly fast and easy to get the physical base addresses and lengths of the fragments that comprise the data buffer: <p align="center"><img src="https://i.snag.gy/9OXvp4.jpg"  width="400px" height="auto"></p>
+	- The I/O and Memory Managers provide functions for getting information about a data buffer using an MDL as `MmGetSystemAddressForMdl()`, `MmMapLockedPages()`, `MmGetMdlVirtualAddress`, `MmGetMdlByteCount` and `MmGetMdlByteOffset`.  
+* _Describing Data Buﬀers with Buffered I/O_:
+	- In this scheme, an intermediate buffer in system space is used as the data buffer. The I/O Manager is responsible for moving the data between the intermediate buffer and the requestor's original data buffer: <p align="center"><img src="https://i.snag.gy/LnWbZo.jpg"  width="400px" height="auto"></p>.
+	- To prepare a Buffered  request, the I/O Manager checks to ensure that the caller has appropriate access to the entire length of the data buffer, just as it did for Direct I/O. 
+	- The  Manager next allocates a system buﬀer fom the nonpaged pool with a size that is (at least) equal to that of the data buffer.
+	- Because the address of the intermediate buffer corresponds to a location in the system's nonpaged pool, the address is usable by the driver in an arbitrary thread context.
+	- Buﬀered I/O is most ofen used by drivers controlling programmed I/O devices that use small data transfers. In this case, it is usually very convenient to have a requestor's data described by using a system virtual address.
+* _Describing Data Buffers with Neither I/O_:
+	- This option is called Neither I/O because the driver does not request either Buffered I/O or Direct I/O.
+	- In this scheme, the I/O Manager provides the driver with the __requestor's virtual address__ of the data buﬀer. The buffer is not locked into memory, no intermediate buffering of the data takes place.
+	- Obviously, the requestor's virtual address is only useful in the context of the calling process. As a result, the only drivers that can make use of Neither I/O are drivers that are entered directly fom the I/O Manager, with no drivers above them, and can process (and, typically, complete) the I/O operation in the context of the calling process.
+	- Most typical device drivers cannot use Neither I/O because the I/O requests in these drivers are ofen started fom their __DpcForlsr__ routine, and are thus called in an arbitrary thread context.
+* If you are writing an Intermediate driver that will be layered above another driver, you must use the same buffering method that the device below you uses.
+* Drivers that transfer at least a page of data or more at a time usually perform best when they use Direct I/O. Although the I/O Manager locks the pages in memory for the duration of the transfer, Direct I/O avoids the overhead of recopying the data to an intermediate buffer. Using Direct I/O for large transfers also prevents tying up large amounts of system pool.
+* Most DMA drivers want to use Direct I/O. Drivers for packet-based DMA devices want to use it because this allows them to easily get the physical base address and length of the fragments that comprise the data buﬀer. Drivers for "common buffer" OMA devices want to use it to avoid the overhead of an additional copy operation.
+* Characteristics of Direct I/O, Buffered IO, and Neither IO: <p align="center"><img src="https://i.imgur.com/MonNsxh.png"  width="500px" height="auto"></p>
+* Windows N uses I/O function codes to identify the specific I/O operation
+that will take place on a particular file object. Like most operating systems,
+* Windows NT I/O function codes are divided into major and minor I/O functions. Both appear in the IRP in the driver's I/O Stack location. Major function codes are defined with symbols starting __IRP_MJ__ . Some of the more common major I/O function codes include the following:
+	- `IRP_MJ_CREATE`: creates a new file object by accessing an existing device or file, or by creating a new file =>  `CreateFile ()`.
+	- `IRP_MJ_CLOSE`: closes a previously opened file object => `CloseHandle()`.
+	- `IRP_MJ_READ`: performs a read operation on an existing file object => `ReadFile()`.
+	- `IRP_MJ_WRITE`: performs a write operation on an existing file object => `WriteFile()`.
+	- `IRP_MJ_DEVICE_CONTROL`: performs a driver defined function on an existing file object => `DeviceIoControl()`.
+	- `IRP_MJ_INTERNAL_DEVICE_CONTROL`: as same the one before, except that yhere are no user-level APis that correspond with this function. This function is typically used for inter-driver communication purposes.
+* Minor IO function codes in Windows N are defined with symbols that start with `IRP_MN_`. Windows NT mostly avoids using minor function codes to overload major functions fr device drivers, fvoring instead the use of IO Control codes. For example, one file system-specific minor IO function code is `IRP_MN_COMPRESSED`, indicating that the data should be written to the volume in compressed format.
+* The major and minor IO function codes associated with a particular IRP are stored in the MajorFunction and MinorFunction fields of the current IO Stack location in the IRP.
+	```
+	IoStack = IoGetCurrentirpStacklocation (Irp) ;
+	If ( IoStack->MajorFunction == IRP_MJ_READ ) {
+		If ( IoStack->MinorFunction ! = IRP_MN_NORMAL {
+			// do something
+		}
+	}
+	```
+* Windows NT provides a macro that defines custom control codes, saving us fom having to manually pack bits into the I/O Control Code longword. This macro is named, appropriately, `CTL_CODE`:
+	```
+	CTL_CODE (DeviceType , Function, Method, Access)
+	```
+* The __DeviceType__ argument for the CTL_CODE macro is a value (of type DEVICE_TYPE) that indicates the category of device to which a given I/O control code belongs. Standard NT devices have standard N device types (FILE_DEVICE_DISK for disk drives, FILE_DEVI CE_TAPE for tapes, and so on) that are defned in the same .H files as the CTL_CODE macro. Custom device types; for devices such as our toaster that don't correspond to any standard N device, may be chosen from the range of 32768-65535. These values are reserved for use by Microsof customers.
+* The __Function__ argument to the CTL_CODE macro is a value, unique within your driver, which is associated with a particular function to be performed. For example, we would need to choose a particular function code that represents the "set toast brownness level" function implemented by our toaster driver. Custom function codes may be chosen from the range of values between 2048-4095.
+* The __Method__ argument indicates to the 10 Manager how the data buﬀers supplied with this request are to be described (METHOD_BUFFERED, METHOD_IN_DIRECT and METHOD_OUT_DIRECT, METHOD_NEITHER).
+* The Access argument to the CTL_CODE macro indicates the type of access that must have been requested (and granted) when the file object was opened for a given 10 control code to be passed on to the driver by the 10 Manager. The possible values for this argument: FILE_ANY_ACCESS, FILE_READ_ACCESS, FILE_WRITE_ACCESS.
+<p align="center"><img src="https://i.imgur.com/VAqyZHA.png"  width="600px" height="auto"></p>
