@@ -245,7 +245,6 @@
 * The Interrupt Spin Lock for a particular interrupt service routine is always acquired by the Microkernel prior to its calling the interrupt service routine.
 * Driver routines other than the interrupt service routine may acquire a particular Interrupt Spin Lock by calling `KeSynchronizeExecution()`.
 
-
 #### The IO Manager
 * The major design characteristics of the Windows NT I/0 Subsystem:
 	- Consistent and highly structured
@@ -302,16 +301,17 @@
 		- System DMA devices do not support scatter/gather.
 		- The HAL programs the System DMA controller; the device then utilizes the functionality of the System DMA controller to transfer data between itself and host memory.
 
-
 #### How I/O Requests Are Described
 * Windows NT describes I/O requests by using a packet-based architecture. In this approach, each I/O request to be performed can be described by using a single __I/O Request Packet__ (IRP).
 * When an I/O system service is issued (such as a request to create or read froma file), the I/O Manager services that request by building an IRP describing the request, and then passes a pointer to that IRP to a device driver to begin processing the request.
+*  The IRP is allocated fom nonpaged space, using either a preallocated IRP in one of the I/O Manager's lookaside lists, or by allocating the IRP directly fom nonpaged pool. 
 * An IRP contains all the information necessary to fully describe an I/O request to the I/O Manager and device drivers. The IRP is a standard NT structure of type "IRP.": <p align="center"><img src="https://i.snag.gy/cnjJym.jpg"  width="300px" height="auto"></p>
 * As you can see in the figure above, each I/O Request Packet may be thought of as having two parts: A __fixed__ part and an I/O Stack.
 * The fixed part of the IRP contains information about the request that either does not vary from driver to driver, or it does not need to be preserved when the IRP is passed from one driver to another.
 * The I/O Stack contains a set of __I/O Stack locations__, each of which holds information specific to each driver that may handle the request.
 * Each I/O Stack location in an IRP contains information for a specific driver about the I/O request. The I/O Stack location is defined by the structure `IO_STACK_LOCATION`.
 * To locate the current I/O Stack location within a given IRP, a driver calls the function `IoGetCurrentIrpStackLocation()`.
+* The I/O Manager initializes the fixed portion of the IRP (in the format indicated by the driver) with the description of the requestor's buffer. The I/O Manager then initializes the first I/O Stack location in the IRP with the fnction codes and parameters for this request. The I/O Manager then calls the first driver in the driver "stack" to begin processing the request.
 * Windows NT provides driver writers with the following three different options for describing the requestor's data buffer associated with an I/O operation:
 	- __Direct I/O__: The buffer may be described in its original location in the requestor's physical address space by a structure called a Memory Descriptor List (MDL), which describes the physical addresses of the requestor's user mode virtual addresses.
 	- __Buffered I/O__: The data from the requestor's buffer may be copied from the requestor's address space into an intermediate location in system address space (by the I/O Manager before the driver gets the IRP), and the driver is provided a pointer to this copy of the data.
@@ -336,8 +336,7 @@
 * Drivers that transfer at least a page of data or more at a time usually perform best when they use Direct I/O. Although the I/O Manager locks the pages in memory for the duration of the transfer, Direct I/O avoids the overhead of recopying the data to an intermediate buffer. Using Direct I/O for large transfers also prevents tying up large amounts of system pool.
 * Most DMA drivers want to use Direct I/O. Drivers for packet-based DMA devices want to use it because this allows them to easily get the physical base address and length of the fragments that comprise the data buﬀer. Drivers for "common buffer" OMA devices want to use it to avoid the overhead of an additional copy operation.
 * Characteristics of Direct I/O, Buffered IO, and Neither IO: <p align="center"><img src="https://i.imgur.com/MonNsxh.png"  width="500px" height="auto"></p>
-* Windows N uses I/O function codes to identify the specific I/O operation
-that will take place on a particular file object. Like most operating systems,
+* Windows NT uses I/O function codes to identify the specific I/O operation that will take place on a particular file object. Like most operating systems,
 * Windows NT I/O function codes are divided into major and minor I/O functions. Both appear in the IRP in the driver's I/O Stack location. Major function codes are defined with symbols starting __IRP_MJ__ . Some of the more common major I/O function codes include the following:
 	- `IRP_MJ_CREATE`: creates a new file object by accessing an existing device or file, or by creating a new file =>  `CreateFile ()`.
 	- `IRP_MJ_CLOSE`: closes a previously opened file object => `CloseHandle()`.
@@ -345,7 +344,7 @@ that will take place on a particular file object. Like most operating systems,
 	- `IRP_MJ_WRITE`: performs a write operation on an existing file object => `WriteFile()`.
 	- `IRP_MJ_DEVICE_CONTROL`: performs a driver defined function on an existing file object => `DeviceIoControl()`.
 	- `IRP_MJ_INTERNAL_DEVICE_CONTROL`: as same the one before, except that yhere are no user-level APis that correspond with this function. This function is typically used for inter-driver communication purposes.
-* Minor IO function codes in Windows N are defined with symbols that start with `IRP_MN_`. Windows NT mostly avoids using minor function codes to overload major functions fr device drivers, fvoring instead the use of IO Control codes. For example, one file system-specific minor IO function code is `IRP_MN_COMPRESSED`, indicating that the data should be written to the volume in compressed format.
+* Minor IO function codes in Windows N are defined with symbols that start with `IRP_MN_`. Windows NT mostly avoids using minor function codes to overload major functions for device drivers, fvoring instead the use of IO Control codes. For example, one file system-specific minor IO function code is `IRP_MN_COMPRESSED`, indicating that the data should be written to the volume in compressed format.
 * The major and minor IO function codes associated with a particular IRP are stored in the MajorFunction and MinorFunction fields of the current IO Stack location in the IRP.
 	```
 	IoStack = IoGetCurrentirpStacklocation (Irp) ;
@@ -359,8 +358,40 @@ that will take place on a particular file object. Like most operating systems,
 	```
 	CTL_CODE (DeviceType , Function, Method, Access)
 	```
-* The __DeviceType__ argument for the CTL_CODE macro is a value (of type DEVICE_TYPE) that indicates the category of device to which a given I/O control code belongs. Standard NT devices have standard N device types (FILE_DEVICE_DISK for disk drives, FILE_DEVI CE_TAPE for tapes, and so on) that are defned in the same .H files as the CTL_CODE macro. Custom device types; for devices such as our toaster that don't correspond to any standard N device, may be chosen from the range of 32768-65535. These values are reserved for use by Microsof customers.
+* The __DeviceType__ argument for the CTL_CODE macro is a value (of type DEVICE_TYPE) that indicates the category of device to which a given I/O control code belongs. Standard NT devices have standard N device types (FILE_DEVICE_DISK for disk drives, FILE_DEVICE_TAPE for tapes, and so on) that are defned in the same .H files as the CTL_CODE macro. Custom device types; for devices such as our toaster that don't correspond to any standard NT device, may be chosen from the range of 32768-65535. These values are reserved for use by Microsof customers.
 * The __Function__ argument to the CTL_CODE macro is a value, unique within your driver, which is associated with a particular function to be performed. For example, we would need to choose a particular function code that represents the "set toast brownness level" function implemented by our toaster driver. Custom function codes may be chosen from the range of values between 2048-4095.
-* The __Method__ argument indicates to the 10 Manager how the data buﬀers supplied with this request are to be described (METHOD_BUFFERED, METHOD_IN_DIRECT and METHOD_OUT_DIRECT, METHOD_NEITHER).
-* The Access argument to the CTL_CODE macro indicates the type of access that must have been requested (and granted) when the file object was opened for a given 10 control code to be passed on to the driver by the 10 Manager. The possible values for this argument: FILE_ANY_ACCESS, FILE_READ_ACCESS, FILE_WRITE_ACCESS.
+* The __Method__ argument indicates to the I/O Manager how the data buﬀers supplied with this request are to be described (METHOD_BUFFERED, METHOD_IN_DIRECT and METHOD_OUT_DIRECT, METHOD_NEITHER).
+* The __Access__ argument to the CTL_CODE macro indicates the type of access that must have been requested (and granted) when the file object was opened for a given I/O control code to be passed on to the driver by the I/O Manager. The possible values for this argument: FILE_ANY_ACCESS, FILE_READ_ACCESS, FILE_WRITE_ACCESS.
+* To retrieve the IOCTL code:
+	```
+	Code = IoStack->Parameters.DeviceloControl.IoControlCode ;
+	```
 <p align="center"><img src="https://i.imgur.com/VAqyZHA.png"  width="600px" height="auto"></p>
+
+### The Layered Driver Model
+* At the highest level, the types of drivers may be divided into two categories: User mode drivers and Kernel mode drivers.
+* User mode drivers ofen provide a subsystem-specific interface to a standard Kernel mode driver. In the Win32 Environment Subsystem, User mode drivers are implemented as Dynamic Linked Libraries (DLLs).
+* As an example, most Audio Compression Manager (ACM) drivers, which implement audio compression algorithms, are User mode, sofware-only drivers. On the other hand, Multimedia Control Interface (MCI) drivers are User mode drivers that typically'interact with underlying hardware through the use of a collaborating Kernel mode driver. <p align="center"><img src="https://i.imgur.com/bT2MmO2.png"  width="400px" height="auto"></p>
+* Kernel mode drivers form part of the Windows NT Executive layer and run in Kernel mode, as their name implies. Kernel mode drivers are accessed and supported by the I/O Manager.
+* The four types of Kernel mode drivers are as follows:
+	- File System drivers
+	- Intermediate drivers
+	- Device drivers
+	- Mini-drivers. <p align="center"><img src="https://i.imgur.com/crRu51r.png"  width="400px" height="auto"></p>
+* __File System drivers__ exist at the top of the NT Kernel mode driver stack. File System drivers play a special role in Windows NT because they are tightly coupled with the NT Memory and Cache Manager subsystems.
+* File System drivers may implement a physical fle system, such as NTFS or FAT; however, they may also implement a distributed or networked facility.
+* __Intermediate drivers__ form the middle layer of the NT driver hierarchy, sitting below File System drivers and above Device drivers. 
+* Intermediate drivers provide either a "value-added" feature (such as mirroring or disk-level encryption) or class processing for devices. In either case, Intermediate drivers rely upon the Device drivers below them in the NT driver hierarchy for access to a physical device.
+* The most common type of Intermediate driver is the _Class driver_. A Class driver typically performs processing for a category of device, having common attributes, which is physically accessed via a separately addressable shared bus. For example, the Disk Class driver performs processing for disk-type devices that are located on a SCSI bus.
+* __Device drivers__ interface to hardware via the Hardware Abstraction Layer (HAL). In general, device drivers control one or more peripheral devices, in
+response to a user request.
+* Device drivers may receive and process interrupts fom their hardware. device drivers may exist alone or may be located under an Intermediate driver in a driver stack. If a device driver exists in a driver stack, it is always at the bottom of the stack. An example of a device driver in a driver stack is the NT serial port driver. Our Toaster example driver mentioned in previous chapters, would also be a device driver. The Toaster driver would probably exist on its own, without an Intermediate or File System driver above it.
+* What distinguishes a __Mini-Driver__ fom other Device drivers is that the Mini-Driver exists within a "wrapper." The Mini-Driver's interfaces are typically restricted to those provided by the wrapper, which dictates the structure of the Mini-Driver. <p align="center"><img src="https://i.imgur.com/ZWGwZ6H.png"  width="300px" height="auto"></p>
+* The purpose of the Mini-Driver approach is to make it relatively easy to write drivers for common peripherals, such as video cards, net cards, and SCSI adapters. All common processing is done in the wrapper; the only work done by the Mini-Driver is the actual interfacing with the hardware.
+* Perhaps the best-known example of a Mini-Driver is the SCSI Miniport driver. The Miniport driver exists inside the wrapper provided by the SCSI Port driver. The SCSI Miniport driver's structure is dictated by the SCSI Port driver. The SCSI Port driver handles all the work common to queuing and processing SCSI requests, including building an appropriate SCSI Command Data Block. The Miniport driver's job is restricted to placing the request on the hardware in a manner that is specific to its particular SCSI adapter.
+* So, now that you know the different types of drivers that exist, how are they organized into stacks? In NT 4, driver stacks are mostly static, being created when the system is first started. As an example, Let's look how the FAT File System driver that uses the services of the Intermediate Disk Class driver, which in turn uses the services of the SCSI Port/MiniPort Device driver:
+	1. The frst driver to start in the example is the SCSI Miniport driver. When the Miniport driver is started, it causes its wrapper the SCSI port driver, to start. The SCSI Port/Miniport driver searches the bus and finds SCSI adapters that it will control. For each adapter found, the SCSI Port driver creates a Device Object named _\Device\ScsiPortX_, where x is an ordinal number representing a particular SCSI adapter.
+	2. After all the SCSI Miniport drivers configured in the system have started, the Class drivers are started, one at a time. The Class driver looks for Device Objects that represent SCSI Port devices, since these are the devices over which it will layer. The Class driver does this by calling the `IoGetDeviceObjectPointer ()`. This resuls on the refrence count of the Device Object to which the File Object belongs to get incredemented. It gets  decremented when the Class driver calls `ObDereferenceObject ()` on the File Object.
+	3. Next, the Disk Class driver enumerates the device units on each SCSI Port. For each disk fund, the Disk Class driver creates a Device Object named _\Device\HardDiskX\Partition0_ (where x is the ordinal number of the disk). This Device Object represents the (entire raw) disk volume itself. In addition, the Disk Class driver creates one Device Object for each logical partition on the disk with a format that it can identify as supportable under Windows NT. These Device Objects are named `\Device\HardDiskX\PartitionY`, where x is the ordinal disk number and Y is the ordinal partition number starting at one on that hard disk. The system later assigns actual drive letters (such as C:, D:, and so on) to these devices in the form of symbolic links.<p align="center"><img src="https://i.imgur.com/qvnEEWZ.png"  width="400px" height="auto"></p>
+* For each Device Object created, the Class driver stores away the Device Object pointer for the underlying device to which its device is linked. That is, for each Disk Device Object it creates, the Disk Class driver stores (in the disk __Device Object's Device Extension__) the pointer to the SCSI Port Device Object on which that disk unit resides.
+* Whenever a Device Object is created for a device that is to be layered above another device, the high-level Device Object must be initialized carefully to reﬂect the attributes of the lower-layer device. The information about the lower-layer device comes from its Device Object, or even fom interrogating the lower-layer physical device itself. See _Characteristics_, _StackSize_ and _AlignmentRequirement_ of `DEVICE_OBJECT` struct.
