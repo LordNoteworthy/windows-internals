@@ -246,7 +246,7 @@
 * Driver routines other than the interrupt service routine may acquire a particular Interrupt Spin Lock by calling `KeSynchronizeExecution()`.
 
 #### The IO Manager
-* The major design characteristics of the Windows NT I/0 Subsystem:
+* The major design characteristics of the Windows NT I/O Subsystem:
 	- Consistent and highly structured
 	- Portable across processor architectures
 	- Configurable
@@ -257,9 +257,9 @@
 	- Packet-driven
 	- Layered
 * The Windows NT I/O Subsystem is based on a collection of "objects." These objects are defined by the Microkernel, HAL, and the I/O Manager and exported to other Kernel mode modules, including device drivers.
-* The NT operating system in general, and the I/0 Subsystem in particular, is _object-based_, but not necessarily _object-oriented_.
-*  Most objects used within the I/0 Subsystem are considered __partially opaque__. This means that a subset of fields within the object can be directly manipulated by kernel modules, including drivers. Examples of partially opaque objects include Device Objects and Driver Objects.
-* A few objects used within the I/0 Subsystem (such as DPC Objects or Interrupt Objects) are considered __fully opaque__. This means that Kernel mode modules (other than the creating module) must call functions that understand and manipulate the fields within the object.
+* The NT operating system in general, and the I/O Subsystem in particular, is _object-based_, but not necessarily _object-oriented_.
+*  Most objects used within the I/O Subsystem are considered __partially opaque__. This means that a subset of fields within the object can be directly manipulated by kernel modules, including drivers. Examples of partially opaque objects include Device Objects and Driver Objects.
+* A few objects used within the I/O Subsystem (such as DPC Objects or Interrupt Objects) are considered __fully opaque__. This means that Kernel mode modules (other than the creating module) must call functions that understand and manipulate the fields within the object.
 * Structures commonly used within the I/O subsystem: <p align="center"><img src="https://i.snag.gy/p6OI49.jpg"></p>
 * The File Object is defined by the NT structure `FILE_OBJECT`. A File Object represents a single open instance of a file, device, directory, socket, named pipe, mail slot, or other similar entity. 
 * The Driver Object describes where a driver is loaded in physical memory, the driver's size, and its main entry points. The format of a Driver Object is defined by the NT structure `DRIVER_OBJECT`.
@@ -268,7 +268,7 @@
 * When a driver creates a Device Object, it also specifies the size of the __Device Extension__ to be created. 
 * The Device Extension is a per-device area that is private to the device driver. The driver can use this area to store anything it wants, including device statistics, queues of requests, or other such data. The Device Extension is typically the main global data storage area.
 * Both the Device Object and Device Extension are created in non-paged pool.
-* The Interrupt Object is created by the I/0 Manager, and is used to connect a driver's interrupt service routine to a given interrupt vector. The structure, `KINTERRUPT`, is one of the few fully opaque structures used in the I/0 Subsystem.
+* The Interrupt Object is created by the I/O Manager, and is used to connect a driver's interrupt service routine to a given interrupt vector. The structure, `KINTERRUPT`, is one of the few fully opaque structures used in the I/O Subsystem.
 * The Adapter Object is used by all OMA drivers. It contains a description of the DMA device, and represents a set of shared resources. These resources may be a DMA channel or a set of DMA map registers.
 
 ### I/O Architectures
@@ -405,11 +405,14 @@ response to a user request.
 * Each driver in a stack is responsible for processing the part of the request that it can handle, if any.
 * If the driver's processing of the request results in its completion, the driver calls `IoCompleteRequest ()` to complete the request.
 * If the request cannot be completed, information for the next lower-level driver in the stack is set up and the request is then passed along to that driver.
-* When the I/0 Manager receives an I/0 system services call, it allocates an IRP with at least as many I/0 Stack locations as there are drivers in the driver stack. The I/0 Manager determines this quantity by examining the StackSize field of the top Device Object in the stack. The I/0 Manager then initializes both the fxed part of the IRP and the IRP's first I/0 Stack location. The I/0 Manager then calls the frst driver in the stack at its appropriate Dispatch routine to start processing the request.
+* When the I/O Manager receives an I/O system services call, it allocates an IRP with at least as many I/O Stack locations as there are drivers in the driver stack. The I/O Manager determines this quantity by examining the StackSize field of the top Device Object in the stack. The I/O Manager then initializes both the fxed part of the IRP and the IRP's first I/O Stack location. The I/O Manager then calls the frst driver in the stack at its appropriate Dispatch routine to start processing the request.
 * If the driver can complete the IRP itself, either immediately or by queuing the IRP for later processing, it will do so.
 * If a driver decides that it cannot completely handle a particular request itself, it can decide to pass that request on to the next lower-level driver in its driver stack. The driver may do this either immediately upon receiving the request, or afer partially processing a request.
-* In order to pass an IRP to another driver, the driver must set up the next I/0 Stack location in the IRP for the underlying driver to which the request will be passed. The driver calls the `IoGetNextIrpStackLocation ()` function to get a pointer to the next I/0 Stack location.
+* In order to pass an IRP to another driver, the driver must set up the next I/O Stack location in the IRP for the underlying driver to which the request will be passed. The driver calls the `IoGetNextIrpStackLocation ()` function to get a pointer to the next I/O Stack location.
 * Using this pointer, the driver fills in the parameters of the request that need to be passed to the next-lowest-level driver. The request is then passed to a specific lower-level driver by calling the `IoCallDriver ()` function.
-* The call to the `IoCallDriver ()` function causes the I/0 Manager to "push" the I/0 Stack, resulting in the I/0 Stack location that had been "next" becoming "current.".
-* The `IoCallDriver ()` function call also causes the I/0 Manager to find the driver associated with the target Device Object and to call that driver's Dispatch routine that corresponds to the Major Function code in the now current I/0 Stack location.
-* It is important to understand that the call to `IoCallDriver ()` causes the I/0 Manager to directly call the target driver's Dispatch routine afer performing a minimal amount of processing; the I/0 Manager does not delay, queue, or schedule this call in any way. Thus, a higher-level driver's call to `IoCallDriver ()` does not return until the Dispatch routine of the called driver performs a return operation.
+* The call to the `IoCallDriver ()` function causes the I/O Manager to "push" the I/O Stack, resulting in the I/O Stack location that had been "next" becoming "current.".
+* The `IoCallDriver ()` function call also causes the I/O Manager to find the driver associated with the target Device Object and to call that driver's Dispatch routine that corresponds to the Major Function code in the now current I/O Stack location.
+* It is important to understand that the call to `IoCallDriver ()` causes the I/O Manager to directly call the target driver's Dispatch routine afer performing a minimal amount of processing; the I/O Manager does not delay, queue, or schedule this call in any way. Thus, a higher-level driver's call to `IoCallDriver ()` does not return until the Dispatch routine of the called driver performs a return operation. <p align="center"><img src="https://i.imgur.com/DIgAERv.png"  width="500px" height="auto"></p>
+* A variation on passing an IRP to a lower-level driver is when a driver chooses to process an IRP by creating one or more additional (new) IRPs and passes these IRPs to a lower-level driver. IRPs may be created by a driver using a variety of methods, the most common of which is to call the `IoAllocateIrp ()` function.
+* A slightly different approach to calling `IoAllocateIrp ()` is for a driver to call the `IoMakeAssociatedIrp ()` function.
+* `IoMakeAssociatedIrp ()` allows the creation of IRPs that are "associated" with a "master" IRP. The driver that calls `IoMakeAssociatedIrp ()` must manually initialize the __AssociatedIrp.Irpcount__ field of the master IRP to the count of associated IRPs that are created prior to calling `IoMakeAssociatedIrp ()`. Associated IRPs may only be used by the topmost driver in a stack.
