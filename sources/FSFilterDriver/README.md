@@ -1,0 +1,5 @@
+IoRegisterFsRegistrationChange:  registers a file system filter driver's notification routine to be called whenever a file system registers or unregisters itself as an active file system.
+IoGetAttachedDeviceReference outine returns a pointer to the highest level device object in a driver stack and increments the reference count on that object.
+IoGetLowerDeviceObject: returns a pointer to the next-lower-level device object on the driver stack.
+IoAttachDeviceToDeviceStackSafe: routine attaches the caller's device object to the topmost device object in a driver stack.
+IoEnumerateDeviceObjectList: routine enumerates a driver's device object list.
