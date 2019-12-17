@@ -1,5 +1,5 @@
 ;
-; KeyboardFilter.inf
+; KeyboardFilterDriver.inf
 ;
 
 [Version]
@@ -8,7 +8,7 @@ Class=System
 ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider=%ManufacturerName%
 DriverVer=
-CatalogFile=KeyboardFilter.cat
+CatalogFile=KeyboardFilterDriver.cat
 
 [DestinationDirs]
 DefaultDestDir = 12
@@ -29,4 +29,4 @@ DefaultDestDir = 12
 [Strings]
 ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
 ClassName=""
-DiskName="KeyboardFilter Source Disk"
+DiskName="KeyboardFilterDriver Source Disk"

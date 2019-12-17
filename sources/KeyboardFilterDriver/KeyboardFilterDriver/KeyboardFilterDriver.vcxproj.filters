@@ -19,7 +19,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Inf Include="FSFilterDriver.inf">
+    <Inf Include="KeyboardFilterDriver.inf">
       <Filter>Driver Files</Filter>
     </Inf>
   </ItemGroup>
@@ -27,21 +27,9 @@
     <ClCompile Include="Driver.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FastIo.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="AttachDetach.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Driver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="FastIo.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="AttachDetach.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

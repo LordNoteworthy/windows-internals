@@ -447,4 +447,8 @@ created by a different driver. The result of this is that IRPs destined for the 
   * Drivers that are the top driver stack.
   * I/O Manager restricts most operations, including read and write operations, to File System drivers only.
   * However, one operation for which the I/O Manager does support Fast I/O for non-File System drivers is IRP_MJ_DEVICE_CONTROL.
-  *  Driver must be able to completely process the request in the context of the calling thread. 
+  *  Driver must be able to completely process the request in the context of the calling thread.
+
+### Driver Structure
+
+- The Windows NT driver architecture uses an entry point model, in which the 1/0 Manager calls a particular routine in a driver when it wants the driver to perform a particular function.

@@ -80,7 +80,8 @@ NTSTATUS DispatchCreate(
 	_In_ PIRP           Irp
 )
 {
-	PFILE_OBJECT pFileObject = IoGetCurrentIrpStackLocation(Irp)->FileObject;
+	PIO_STACK_LOCATION IoStackLocation = IoGetCurrentIrpStackLocation(Irp);
+	PFILE_OBJECT pFileObject = IoStackLocation->FileObject;
 	KdPrint(("%wZ\r\n", &pFileObject->FileName));
 
 	return DispatchPassThrough(DeviceObject, Irp);
