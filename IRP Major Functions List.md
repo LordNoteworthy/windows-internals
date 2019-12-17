@@ -1,3 +1,4 @@
+```
 #define IRP_MJ_CREATE                   0x00
 #define IRP_MJ_CREATE_NAMED_PIPE        0x01
 #define IRP_MJ_CLOSE                    0x02
@@ -28,3 +29,4 @@
 #define IRP_MJ_PNP                      0x1b
 #define IRP_MJ_PNP_POWER                IRP_MJ_PNP      // Obsolete....
 #define IRP_MJ_MAXIMUM_FUNCTION         0x1b
+```
