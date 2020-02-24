@@ -173,3 +173,71 @@ shipped as sample source code in both the Windows SDK and the MSDN Library.
 - Various tools which helps diagnose, troubleshoot, and monitor the windows OS.
 - The most popular tools include Process Explorer and Process Monitor.
 - Heavily used in malware analysis.
+
+## Chapter 2: System Architecture
+
+### Operating System Model
+
+- Windows is similar to most UNIX systems in that it’s a **monolithic** OS in the sense that the bulk of the OS and device driver code shares the same kernel-mode protected memory space.
+- Here is a simplified version of this architecture:
+
+<p align="center"><img src="https://i.imgur.com/NcPJBiS.png" width="500px" height="auto"></p>
+
+- The four basic types of user-mode processes are described as follows:
+    - Fixed (or hardwired) **system support processes**, such as the logon process and the Session Manager, that are not Windows services (That is, they are not started by the service control manager)
+    - **Service processes** that host Windows services, such as the _Task Scheduler_ and _Print Spooler_ services. Services generally have the requirement that they run independently of user logons.
+    - **User applications**, which can be one of the following types: Windows 32-bit or 64-bit, Windows 3 1 16-bit, MS-DOS 16-bit, or POSIX 32-bit or 64-bit. Note that 16-bit applications can be run only on 32-bit Windows.
+    - **Environment subsystem server processes**, which implement part of the support for the oOS environment, or personality, presented to the user and programmer. Windows NT originally shipped with three environment subsystems: Windows, POSIX, and OS/2 However, the POSIX and OS/2 subsystems last shipped with Windows 2k. The Ultimate and Enterprise editions of Windows client as well as all of the server versions include support for an enhanced POSIX subsystem called __Subsystem for Unix-based Applications (SUA)__.
+- User applications don’t call the native Windows OS services directly; rather, they go through one or more **subsystem dynamic-link libraries (DLLs)**.
+- The role of the subsystem DLLs is to translate a documented function into the appropriate internal (and generally undocumented) native system service calls. This translation might or might not involve sending a message to the environment subsystem process that is serving the user application.
+- The kernel-mode components of Windows include the following:
+    - The Windows executive.
+    - The Windows kernel 
+    - Device drivers
+    - The hardware abstraction layer (HAL).
+    - The windowing and graphics system
+-  List of important file names of the core Windows OS components:
+<p align="center"><img src="https://i.imgur.com/DiTqz7s.png" width="600px" height="auto"></p>
+
+### Portability
+
+- Windows was designed with a variety of hardware architectures. Back in time, _MIPS, Alpha AXP_ and _PowerPC_ were supported but got dropped later due to changing market demands which left only _Intel x86/x64_ the only one kept being supported.
+- Windows has a **layered design**, with low-level portions of the system that are processor architecture-specific or platform-specific **isolated** into separate modules so that upper layers of the system can be shielded from the differences between architectures and among hardware platforms.
+- The vast majority of Windows is written in **C**, with **some portions in C++**. **Assembly** language is used only for those parts of the OS that need to communicate directly with system hardware (such as the interrupt trap handler) or that are extremely performance-sensitive (such as context switching).
+
+### Symmetric Multiprocessing
+
+- **Multitasking** is the OS technique for sharing a single processor among multiple threads of execution.
+- When a computer has more than one processor, however, it can execute multiple threads simultaneously.
+- Thus, whereas a **multitasking** OS only appears to execute multiple threads at the same time, a **multiprocessing** OS actually does it, executing one thread on each of its processors.
+- Windows is a **symmetric multiprocessing (SMP)** OS.
+    - There is no master processor
+    - the OS as well as user threads can be scheduled to run on any processor 
+    - Also, all the processors share just one memory space
+- This model contrasts with **asymmetric multiprocessing (ASMP)**, in which the OS typically selects one processor to execute OS kernel code while other processors run only user code.
+- Windows also supports three modern types of multiprocessor systems: **multicore, Hyper-Threading enabled, and NUMA** (non-uniform memory architecture).
+<p align="center"><img src="https://i.imgur.com/LRIa4ot.png" width="500px" height="auto"></p>
+
+### Scalability
+
+- One of the key issues with multiprocessor systems is scalability .
+- Windows incorporates several features that are crucial to its success as a multiprocessor OS:
+    - The ability to run OS code on any available processor and on multiple processors at the same time.
+    - Multiple threads of execution within a single process, each of which can execute simultaneously on different processors
+    - Fine-grained synchronization within the kernel (such as spinlocks, queued spinlocks, and pushlocks,)
+    - Programming mechanisms such as I/O completion ports (that facilitate the efficient implementation of multithreaded server processes that can scale well on multiprocessor systems).
+
+### Differences Between Client and Server Versions
+
+- Windows ships in both client and server retail packages.
+- The client version differs by (Pro, Ultimate, Home, ...):
+    - The number of processors supported (in terms of sockets, not cores or threads).
+    - The amount of physical memory supported.
+    - The number of concurrent network connections supported 
+    - And features like: Multi-Touch, Aero, Desktop Compositing, etc...
+- The server systems are optimized by default for **system throughput** as high performance application servers, whereas the client version (although it has server capabilities) is optimized for **response time** for **interactive desktop use**. 
+- Look for `GetVersion(Ex)` or `RtlGetVersion` to determine which editions of Windows you are running on. Worth checkig as well: `VerifyVersionInfo()` or `RtlVerifyVersionInfo()`.
+- Windows supports more than 100 different features that can be enabled through the software licensing mechanism.
+    - You can use the SlPolicy tool available [here](https://github.com/zodiacon/WindowsInternals/tree/master/SlPolicy) to display these policy values"
+<p align="center"><img src="https://i.imgur.com/Snj8dgy.png" width="600px" height="auto"></p>
+
