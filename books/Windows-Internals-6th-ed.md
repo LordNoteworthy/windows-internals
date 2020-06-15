@@ -89,7 +89,7 @@
 ### Kernel Mode vs. User Mode
 
 - To prevent user applications to modify critical OS data, Windows uses two processor access modes (even if the processor on which Windows is running supports more than two): **user mode** and **kernel mode**.
-- User application code runs in user mode, whereas OS code (such as system services and device drivers) runs in kernel mode
+- User application code runs in user mode, whereas OS code (such as system services and device drivers) runs in kernel mode.
 - Kernel mode refers to a mode of execution in a processor that grants access to all system memory and all CPU instructions.
 - Although each Windows process has its own private memory space, the kernel-mode OS and device driver code share a single virtual address space.
 - Each page in virtual memory is tagged to indicate what access mode the processor must be in to read and/or write the page.
@@ -187,7 +187,7 @@ shipped as sample source code in both the Windows SDK and the MSDN Library.
     - Fixed (or hardwired) **system support processes**, such as the logon process and the Session Manager, that are not Windows services (That is, they are not started by the service control manager)
     - **Service processes** that host Windows services, such as the _Task Scheduler_ and _Print Spooler_ services. Services generally have the requirement that they run independently of user logons.
     - **User applications**, which can be one of the following types: Windows 32-bit or 64-bit, Windows 3 1 16-bit, MS-DOS 16-bit, or POSIX 32-bit or 64-bit. Note that 16-bit applications can be run only on 32-bit Windows.
-    - **Environment subsystem server processes**, which implement part of the support for the oOS environment, or personality, presented to the user and programmer. Windows NT originally shipped with three environment subsystems: Windows, POSIX, and OS/2 However, the POSIX and OS/2 subsystems last shipped with Windows 2k. The Ultimate and Enterprise editions of Windows client as well as all of the server versions include support for an enhanced POSIX subsystem called __Subsystem for Unix-based Applications (SUA)__.
+    - **Environment subsystem server processes**, which implement part of the support for the OS environment, or personality, presented to the user and programmer. Windows NT originally shipped with three environment subsystems: Windows, POSIX, and OS/2 However, the POSIX and OS/2 subsystems last shipped with Windows 2k. The Ultimate and Enterprise editions of Windows client as well as all of the server versions include support for an enhanced POSIX subsystem called __Subsystem for Unix-based Applications (SUA)__.
 - User applications don’t call the native Windows OS services directly; rather, they go through one or more **subsystem dynamic-link libraries (DLLs)**.
 - The role of the subsystem DLLs is to translate a documented function into the appropriate internal (and generally undocumented) native system service calls. This translation might or might not involve sending a message to the environment subsystem process that is serving the user application.
 - The kernel-mode components of Windows include the following:
@@ -241,3 +241,81 @@ shipped as sample source code in both the Windows SDK and the MSDN Library.
     - You can use the SlPolicy tool available [here](https://github.com/zodiacon/WindowsInternals/tree/master/SlPolicy) to display these policy values"
 <p align="center"><img src="https://i.imgur.com/Snj8dgy.png" width="600px" height="auto"></p>
 
+### Checked vs Free builds
+
+- **checked build** is a recompilation of the Windows source code with a compile time flag defined called `DBG`:
+    - easier to understand the machine code, the post-processing of the Windows binaries to optimize code layout for faster execution is not performed
+    - aid device driver developers because it performs more stringent error checking on kernel-mode functions called by device drivers or other system code
+    - additional detailed informational tracing that can be enabled for certain components.
+- **free build** is used in production environments.
+    - is built with full compiler optimization.
+
+### Windows Architecture
+
+<p align="center"><img src="https://i.imgur.com/gz5AHxH.png" width="600px" height="auto"></p>
+
+### Environment Subsystems and Subsystem DLLs
+
+- The role of an environment subsystem is to expose some subset of the base Windows executive system services to application programs.
+- User applications don’t call Windows system services **directly**. Instead, they go through one or more subsystem DLLs.
+- These libraries export the documented interface that the programs linked to that subsystem can call For example, the Windows subsystem DLLs (such as Kernel32 dll, Advapi32 dll, User32 dll, and Gdi32 dll) implement the Windows API functions. The **SUA** subsystem DLL (Psxdll.dll) implements the **SUA API** functions.
+- When an application calls a function in a subsystem DLL, one of three things can occur:
+    - The function is __entirely implemented in user mode__ inside the subsystem DLL. Examples of such functions include `GetCurrentProcess` (which always returns –1, a value that is defined to refer to the current process in all process-related functions) and `GetCurrentProcessId` (The process ID doesn’t change for a running process, so this ID is retrieved from a cached location, thus avoiding the need to call into the kernel).
+    - The function requires __one or more calls__ to the Windows executive For example, the Windows `ReadFile` and `WriteFile` functions involve calling the underlying internal (and undocumented) Windows I/O system services `NtReadFile` and `NtWriteFile`, respectively.
+    - The function requires some work to be done in the __environment subsystem process__ (The environment subsystem processes, running in user mode, are responsible for maintaining the state of the client applications running under their control ). In this case, a client/server request is made to the environment subsystem via a message sent to the subsystem to perform some operation. The subsystem DLL then waits for a reply before returning to the caller. Some functions can be a combination of the second and third items just listed, such as the Windows `CreateProcess` and `CreateThread` functions.
+- The Windows subsystem consists of the following major components:
+    - For each session, an instance of the __environment subsystem process (Csrss exe)__ loads three DLLs (Basesrv.dll, Winsrv.dll, and Csrsrv.dll).
+    - A __kernel-mode device driver (Win32k.sys)__ includes (Window manager, GDI & wrappers for DirectX).
+    - The __console host process (Conhost exe)__, which provides support for console (character cell) applications.
+    - __Subsystem DLLs__ (such as Kernel32.dll, Advapi32.dll, User32.dll, and Gdi32.dll) that translate documented Windows API functions into the appropriate and mostly undocumented kernel-mode system service calls in Ntoskrnl exe and Win32k sys.
+
+### Subsystem Startup
+
+- Subsystems are __started__ by the __Session Manager (Smss exe)__ process.
+- The Required value lists the subsystems that load when the system boots.
+- The Windows value contains the file specification of the Windows subsystem, __Csrss.exe__, which stands for _Client/Server Run-Time Subsystem_. 
+
+### Windows Subsystem
+
+- To avoid duplicating code, the SUA subsystem calls services in the Windows subsystem to perform display I/O.
+- The Windows subsystem consists of the following major components:
+    - For each session, an instance of the environment subsystem process (Csrss.exe) loads three DLLs (Basesrv.dll, Winsrv.dll, and Csrsrv.dll)
+    - A kernel-mode device driver (Win32k.sys): Window manager + GDI + Wrappers for DirectX.
+    - The console host process (Conhost.exe), which provides support for console (character cell) applications.
+    - Subsystem DLLs: the bridge to Ntoskrnl exe and Win32k.sys.
+    - Graphics device drivers for hardware-dependent graphics display drivers, printer drivers, and video miniport drivers.
+
+#### Console Window Host
+
+- In the original Windows subsystem design, the subsystem process (Csrss exe) was responsible for the managing of console windows and each console application (such as Cmd exe, the command prompt) communicated with Csrss.
+- Windows now uses a separate process, the __console window host (Conhost exe)__, for each console window on the system (A single console window can be shared by multiple console applications, such as when you launch a command prompt from the command prompt By default, the second command prompt shares the console window of the first.)
+
+### Subsystem for Unix-based Applications
+
+- SUA enables compiling and running custom UNIX-based applications on a computer running Windows Server or the Enterprise or Ultimate editions of Windows client.
+
+### Ntdll.dll
+
+- special system support library primarily for the use of subsystem DLLs It contains two types of functions:
+    - System service dispatch stubs to Windows executive system services
+    - Internal support functions used by subsystems, subsystem DLLs, and other native images:
+        - image loader functions (Ldr) + the heap manager
+        - Windows subsystem process communication functions (Csr)
+        - run-time library routines (Rtl) + user-mode debugging (DbgUi)
+        - Event Tracing for Windows (Etw)
+        - user-mode asynchronous procedure call (APC) dispatcher and exception dispatcher.
+        - a small subset of the C Run-Time (CRT) routines.
+
+### Executive
+
+- is the upper layer of Ntoskrnl exe (The kernel is the lower layer ).
+- The executive includes the following types of functions:
+    - __System services__: Functions that are exported and callable from user mode
+    - Device driver functions that are called through the use of the `DeviceIoControl()`
+    - Functions that are exported and callable from kernel mode but are __not documented in the WDK (like functions called by the boot video driver (Inbv))
+    - Functions that are defined as global symbols but are not exported.
+        -  Iop (internal I/O manager support functions) or Mi (internal memory management support functions)
+    - Functions that are internal to a module that are not defined as global symbols.
+- The executive contains the following major components, each of which is covered in detail in a
+subsequent chapter of this book:
+    - __configuration manager__: responsible for implementing and managing the system registry.

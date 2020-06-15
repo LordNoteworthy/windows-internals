@@ -6,3 +6,4 @@ This projects collect my notes while studying the Windows internals. It is divid
     - FSFilterDriver:   : Legacy file system filter driver using Fast I/O.
 * __books__:
     - Windows NT Device Driver Development by Peter _G. Viscarola_ and _W. Anthony Mason_ (resumed version)
+    - Windows Internals 6th edition by _Mark E. Russinovich_, _David A. Solomon_ and _Alex Ionescu_  (resumed version)

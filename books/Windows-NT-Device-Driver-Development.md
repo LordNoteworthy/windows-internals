@@ -1,6 +1,7 @@
 # windows-internals
 
 ##### Windows NT Key features:
+
 * Multi-threading.
 * Pre-emtive Multitasking.
 * Virtual memory.
@@ -9,6 +10,7 @@
 * Multiple Operating System Emulation.
 
 ##### Windows is divided into three major groups:
+
 * The executive: responsible for system service dispatching and managing the paged and non paged system pools. In addition to the executive module itself.
 * The microkernel: processor independent, deliberately small OS module which handle routing interrupts, context switching and multiprocessor synchronization.
 * The Hardware Abstraction Layer (HAL): responsible for providing a standard interface to processor-specific resources.
