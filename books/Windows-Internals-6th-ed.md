@@ -319,3 +319,69 @@ shipped as sample source code in both the Windows SDK and the MSDN Library.
 - The executive contains the following major components, each of which is covered in detail in a
 subsequent chapter of this book:
     - __configuration manager__: responsible for implementing and managing the system registry.
+    - __process manager__ creates and terminates processes and threads. The underlying support for processes and threads is implemented in the Windows kernel; the executive adds additional semantics and functions to these lower-level objects.
+    - __security reference monitor__ enforces security policies on the local computer. It guards operating system resources, performing run-time object protection and auditing.
+    - __I/O manager__ implements device-independent I/O and is responsible for dispatching to the appropriate device drivers for further processing.
+    - __Plug and Play (PnP)__ manager determines which drivers are required to support a particular device and loads those drivers.
+    - __power manager__ coordinates power events and generates power management I/O notifications to device drivers.
+    - __Windows Driver Model Windows Management Instrumentation routines__  enable device drivers to publish performance and configuration information and receive commands from the user-mode WMI service.
+    - __cache manager__ improves the performance of file-based I/O by causing recently referenced disk data to reside in main memory for quick access.
+    - __memory manager__ implements virtual memory, a memory management scheme that provides a large, private address space for each process that can exceed available physical memory.
+    - __logical prefetcher__ and __Superfetch__ accelerate system and process startup by optimizing the loading of data referenced during the startup of the system or a process.
+- Additionally, the executive contains four main groups of support functions that are used by the executive components just listed. About a third of these support functions are documented in the WDK because device drivers also use them. These are the four categories of support functions:
+    - __object manager__ which creates, manages, and deletes Windows executive objects and abstract data types that are used to represent operating system resources such as processes, threads, and the various synchronization objects.
+    - __advanced LPC facility__ (ALPC): passes messages between a client process and a server process on the same computer. Among other things, ALPC is used as a local transport for remote procedure call (RPC), an industry-standard communication facility for client and server processes across a network.
+    - A broad set of __common run-time library__ functions, such as string processing, arithmetic operations, data type conversion, and security structure processing.
+    - __executive support routines__, such as system memory allocation (paged and nonpaged pool), interlocked memory access, as well as three special types of synchronization objects: resources, fast mutexes, and pushlocks.
+- The executive also contains a variety of other infrastructure routines:
+    -  __kernel debugger library__, which allows debugging of the kernel from a debugger supporting KD.
+    - user-mode debugging framework.
+    - __kernel transaction manager__, which provides a common, two-phase commit mechanism to resource managers, such as the _transactional registry (TxR)_ and _transactional NTFS (TxF)_.
+    - __hypervisor library__ provides kernel support for the virtual machine environment and optimizes certain parts of the code when the system knows it’s running in a client partition (virtual environment)
+    - __errata manager__ provides workarounds for nonstandard or noncompliant hardware devices.
+    - __driver verifier__ implements optional integrity checks of kernel-mode drivers and code
+    _ __event tracing for windows (ETW)__ provides helper routines for systemwide event tracing for kernel-mode and user-mode components
+    - __Windows diagnostic infrastructure__ enables intelligent tracing of system activity based on diagnostic scenarios
+    - __Windows hardware error architecture__ support routines provide a common framework for reporting hardware errors
+    - __file-system runtime library__ provides common support routines for file system drivers.
+
+### Kernel
+
+- consists of a set of functions in `Ntoskrnl.exe` that provides fundamental mechanisms such as:
+    - __thread scheduling__ and __synchronization services__ used by the executive components, as well as low-level hardware architecture–dependent support (such as __interrupt and exception dispatching__ that is different on each processor architecture.
+    - written mostly in C + assembly for specialized processor instructions.
+    - expose many functions documented in the WDK (Ke).
+
+### Kernel Objects
+
+- Outside the kernel, the executive represents threads and other shareable resources as objects.
+- These objects require some __policy overhead__, such as object handles to manipulate them, security checks to protect them, and resource quotas to be deducted when they are created.
+-  This overhead is eliminated in the kernel, which implements a set of simpler objects, called __kernel objects__, that help the kernel control central processing and support the creation of executive objects.
+- Most executive-level objects encapsulate one or more kernel objects, incorporating their kernel-defined attributes.
+- The executive uses kernel functions to create instances of kernel objects, to manipulate them, and to construct the more complex objects it provides to user mode 
+
+### Kernel Processor Control Region and Control Block (KPCR and KPRCB)
+
+- The kernel uses a data structure called the __kernel processor control region__, or KPCR, to store processor-specific data:
+    - IDT, TSS, GDT.
+    - interrupt controller state, which it shares with other modules, such as the ACPI driver and the HAL.
+    - can be accessed via fs/gs register on 32bit/64bits Winsows system correspondingly.
+    - On IA64 systems, the KPCR is always located at `0xe0000000ffff0000`
+- KPCR also contains an embedded data structure called the __kernel processor control block__ or KPRCB.
+    - is a private structure used only by the kernel code in Ntoskrnl.exe
+    - contains scheduling information such as the current, next, and idle threads scheduled for execution on the processor
+    - the dispatcher database for the processor (which includes the ready queues for each priority level)
+    - the DPC queue
+    - CPU vendor and identifier information (model, stepping, speed, feature bits);
+    - CPU and NUMA topology (node information, cores per package, logical processors per core, and so on)
+    - cache sizes
+    - time accounting information (such as the DPC and interrupt time); and more
+    - also contains all the statistics for the processor, such as I/O statistics, cache manager statistics, DPC statistics, and memory manager statistics 
+    - sometimes used to store cache-aligned, per-processor structures to optimize memory access, especially on NUMA systems
+        - For example, the nonpaged and paged-pool system look-aside lists are stored in the KPRCB.
+- `!pcr`   <p align="center"><img src="https://i.imgur.com/2MCLigj.png" width="300px" height="auto"></p>
+- `!prcb` <p align="center"><img src="https://i.imgur.com/qXyfQvf.png" width="600px" height="auto"></p>
+- `dt nt!_KPCR` <p align="center"><img src="https://i.imgur.com/sBs1zRT.png" width="500px" height="auto"></p>
+- `dt nt!_KPRCB` <p align="center"><img src="https://i.imgur.com/8l0NNEi.png" width="500px" height="auto"></p>
+
+### Hardware Support
