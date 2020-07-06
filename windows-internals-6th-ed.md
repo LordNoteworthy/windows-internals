@@ -414,3 +414,17 @@ There are several types of device drivers:
     - __Network redirectors and servers__ are file system drivers that transmit file system I/O requests to a machine on the network and receive such requests, respectively
     - __Protocol drivers__ implement a networking protocol such as _TCP/IP_, _NetBEUI_, and _IPX/SPX_.
     - __Kernel streaming filter drivers__ are chained together to perform signal processing on data streams, such as recording or displaying audio and video.
+
+### Windows Driver Model (WDM)
+
+- _Windows 2000_ added support for __Plug and Play__, __Power Options__, and an extension to the Windows NT driver_ model called the __Windows Driver Model (WDM)__.
+- From the WDM perspective, there are three kinds of drivers:
+    - __bus driver__ services a bus controller, adapter, bridge, or any device that has child devices.
+        - are required drivers, and Microsoft generally provides them; each type of bus (such as __PCI__, __PCMCIA__, and __USB__) on a system has one bus driver.
+        - third parties can write bus drivers to provide support for new buses, such as __VMEbus__, __Multibus__, and __Futurebus__
+    - __function driver__ is the main device driver and provides the operational interface for its device.
+        - It is a required driver unless the device is used raw (an implementation in which I/O is done by the bus driver and any bus filter drivers, such as _SCSI PassThru_).
+        - A function driver is by definition the driver that knows the most about a particular device, and it is usually the only driver that accesses device-specific registers.
+    - __filter driver__ is used to add functionality to a device (or existing driver) or to modify I/O requests or responses from   other drivers (and is often used to fix hardware that provides incorrect information about its hardware resource requirements) 
+        - are optional and can exist in any number, placed above or below a function driver and above a bus driver.
+        - usually, system original equipment manufacturers (OEMs) or independent hardware vendors (IHVs) supply filter drivers 
