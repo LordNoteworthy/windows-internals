@@ -308,13 +308,12 @@ shipped as sample source code in both the Windows SDK and the MSDN Library.
 
 ### Executive
 
-- is the upper layer of Ntoskrnl exe (The kernel is the lower layer ).
-- The executive includes the following types of functions:
-    - __System services__: Functions that are exported and callable from user mode
-    - Device driver functions that are called through the use of the `DeviceIoControl()`
-    - Functions that are exported and callable from kernel mode but are __not documented in the WDK (like functions called by the boot video driver (Inbv))
-    - Functions that are defined as global symbols but are not exported.
-        -  Iop (internal I/O manager support functions) or Mi (internal memory management support functions)
+- is the upper layer of Ntoskrnl exe (The kernel is the lower layer, it includes the following types of functions:
+    - __System services__: Functions that are exported and callable from user mode.
+    - Device driver functions that are called through the use of the `DeviceIoControl()`.
+    - Functions that are exported and callable from kernel mode but are __not documented__ in the WDK (like functions called by the boot video driver `Inbv`)
+    - Functions that are defined as __global symbols__ but are not exported.
+        -  `Iop` (internal I/O manager support functions) or `Mi` (internal memory management support functions)
     - Functions that are internal to a module that are not defined as global symbols.
 - The executive contains the following major components, each of which is covered in detail in a
 subsequent chapter of this book:
@@ -382,6 +381,36 @@ subsequent chapter of this book:
 - `!pcr`   <p align="center"><img src="https://i.imgur.com/2MCLigj.png" width="300px" height="auto"></p>
 - `!prcb` <p align="center"><img src="https://i.imgur.com/qXyfQvf.png" width="600px" height="auto"></p>
 - `dt nt!_KPCR` <p align="center"><img src="https://i.imgur.com/sBs1zRT.png" width="500px" height="auto"></p>
-- `dt nt!_KPRCB` <p align="center"><img src="https://i.imgur.com/8l0NNEi.png" width="500px" height="auto"></p>
+- `dt nt!_KPRCB` <p align="center"><img src="https://i.imgur.com/8l0NNEi.png" width="400px" height="auto"></p>
 
 ### Hardware Support
+
+- The other major job of the kernel is to __abstract__ or __isolate__ the executive and device drivers from variations between the hardware architectures supported by Windows:
+    - includes handling variations in functions such as __interrupt handling__, __exception dispatching__, and __multiprocessor synchronization__.
+- Some kernel interfaces (such as _spinlock_ routines) are actually implemented in the HAL because their implementation can vary for systems within the same architecture family.
+- Other examples of architecture-specific code in the kernel include the interfaces to provide __translation buffer and CPU cache__ support. This support requires different code for the different architectures because of the way caches are implemented.
+- Another example is __context switching__:
+    - Although at a high level the same algorithm is used for thread selection and context switching
+    - there are architectural differences among the implementations on different processors
+    - because the context is described by the processor state (registers and so on), what is saved and loaded varies depending on the architecture.
+
+### Hardware Abstraction Layer
+
+- HAL is a loadable kernel-mode module `Hal.dll` that provides the __low-level interface__ to the hardware platform on which Windows is running.
+- hides hardware-dependent details such as __I/O interfaces__, __interrupt controllers__, and __multiprocessor communication__ mechanisms.
+
+### Device Drivers
+
+- are loadable kernel-mode modules (typically ending in sys) that interface between the __I/O manager__ and the relevant __hardware__.
+- they run in kernel mode in one of three contexts:
+    - In the context of the user thread that initiated an I/O function
+    - In the context of a kernel-mode system thread
+    - As a result of an interrupt (and therefore not in the context of any particular process or thread—whichever process or thread was current when the interrupt occurred)
+- they don’t manipulate __hardware directly__, but rather they call functions in the HAL to interface with the hardware.
+There are several types of device drivers:
+    - __Hardware device drivers__ manipulate hardware (using the HAL) to write output to or retrieve input from a physical device or network There are many types of hardware device drivers, such as _bus drivers_, _human interface drivers_, _mass storage drivers_, and so on
+    - __File system drivers__ are Windows drivers that accept file-oriented I/O requests and translate them into I/O requests bound for a particular device
+    - __File system filter drivers__, such as those that perform disk mirroring and encryption, intercept I/Os, and perform some added-value processing before passing the I/O to the next layer
+    - __Network redirectors and servers__ are file system drivers that transmit file system I/O requests to a machine on the network and receive such requests, respectively
+    - __Protocol drivers__ implement a networking protocol such as _TCP/IP_, _NetBEUI_, and _IPX/SPX_.
+    - __Kernel streaming filter drivers__ are chained together to perform signal processing on data streams, such as recording or displaying audio and video.
