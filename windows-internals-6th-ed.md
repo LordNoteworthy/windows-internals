@@ -415,7 +415,7 @@ There are several types of device drivers:
     - __Protocol drivers__ implement a networking protocol such as _TCP/IP_, _NetBEUI_, and _IPX/SPX_.
     - __Kernel streaming filter drivers__ are chained together to perform signal processing on data streams, such as recording or displaying audio and video.
 
-### Windows Driver Model (WDM)
+#### Windows Driver Model (WDM)
 
 - _Windows 2000_ added support for __Plug and Play__, __Power Options__, and an extension to the Windows NT driver_ model called the __Windows Driver Model (WDM)__.
 - From the WDM perspective, there are three kinds of drivers:
@@ -428,3 +428,90 @@ There are several types of device drivers:
     - __filter driver__ is used to add functionality to a device (or existing driver) or to modify I/O requests or responses from   other drivers (and is often used to fix hardware that provides incorrect information about its hardware resource requirements) 
         - are optional and can exist in any number, placed above or below a function driver and above a bus driver.
         - usually, system original equipment manufacturers (OEMs) or independent hardware vendors (IHVs) supply filter drivers 
+
+#### Windows Driver Foundation (WDF)
+
+- simplifies Windows driver development by providing two frameworks:
+    - the __Kernel-Mode Driver Framework (KMDF)__ and the __User-Mode Driver Framework (UMDF__. 
+    - developers can use KMDF to write drivers for Windows 2000 SP4 and later, while UMDF supports Windows XP and later.
+- provides a simple interface to WDM.
+- hides its complexity from the driver writer without modifying the underlying bus/function/filter model.
+- KMDF drivers respond to events that they can register and call into the KMDF library to perform work that isn’t specific to the hardware they are managing, such as __generic power management__ or __synchronization__ .
+    - Previously, each driver had to implement this on its own.
+    - In some cases, more than 200 lines of WDM code can be replaced by a single KMDF function call.
+- UMDF enables certain classes of drivers (mostly USB-based or other high-latency protocol buses) such as those for video cameras, MP3 players, cell phones, PDAs, and printers—to be implemented as user-mode drivers.
+    - UMDF runs each user-mode driver in what is essentially a __usermode service__, and it uses __ALPC__ to communicate to a kernel-mode wrapper driver that provides actual access to hardware.
+    - If a UMDF driver crashes, the process dies and usually restarts, so the system doesn’t become unstable. The device simply becomes unavailable while the service hosting the driver restarts. 
+    - UMDF drivers are written in C++ using COM-like classes and semantics, further lowering the bar for programmers to write device drivers
+
+#### Peering into Undocumented Interfaces
+
+- looking at the list of functions in __ntdll.dll__ gives you the list of all the system services that Windows provides to user-mode subsystem DLLs versus the subset that each subsystem exposes.
+- although many of these functions map clearly to documented and supported Windows functions, several are not exposed via the Windows API.
+- another interesting image to dump is __Ntoskrnl.exe__, although many of the exported routines that kernel-mode device drivers use are documented in the Windows Driver Kit, quite a few are not.
+- a common convention in the major executive components function naming:
+    - the first letter of the prefix followed by an i (for __internal__) or ;
+    - the full prefix followed by a p (for __private__) .
+    - for example, _Ki_ represents internal kernel functions, and _Psp_ refers to internal process support functions.
+- commonly Used Prefixes:
+
+    |Prefix | Component|
+    |-------|---------|
+    |Alpc | Advanced Local Inter-Process Communication|
+    |Cc | Common Cache|
+    |Cm |Configuration manager|
+    |Dbgk | Debugging Framework for User-Mode|
+    |Em | Errata Manager|
+    |Etw | Event Tracing for Windows|
+    |Ex | Executive support routines|
+    |FsRtl | File system driver run-time library|
+    |Hvl | Hypervisor Library|
+    |Io | I/O manager|
+    |Kd | Kernel Debugger|
+    |Ke | Kernel|
+    |Lsa | Local Security Authority|
+    |Mm | Memory manager|
+    |Nt | NT system services (most of which are exported as Windows functions)|
+    |Ob | Object manager|
+    |Pf | Prefetcher|
+    |Po | Power manager|
+    |Pp | PnP manager|
+    |Ps | Process support|
+    |Rtl | Run-time library|
+    |Se | Security|
+    |Sm | Store Manager|
+    |Tm | Transaction Manager|
+    |Vf | Verifier|
+    |Wdi |Windows Diagnostic Infrastructure|
+    |Whea | Windows Hardware Error Architecture|
+    |Wmi | Windows Management Instrumentation|
+    |Zw | Mirror entry point for system services (beginning with Nt) that sets previous access mode to kernel, which eliminates parameter validation, because Nt system services validate parameters only if previous access mode is user|
+- the general format: `<Prefix><Operation><Object>`
+
+### System Processes
+
+- the following system processes appear on every Windows system.
+- two of these `Idle and System` are not full processes because they are not running a user-mode executable.
+    - Idle process (contains one thread per CPU to account for idle CPU time).
+    - System process (contains the majority of the kernel-mode system threads).
+    - Session manager (__Smss.exe__).
+    - Local session manager (__Lsm.exe__).
+    - Windows subsystem (__Csrss.exe__).
+    - Session 0 initialization (__Wininit.exe__).
+    - Logon process (__Winlogon.exe__).
+    - Service control manager (__Services.exe__) and the child service processes it creates (such as the system-supplied generic service-host process, Svchost exe).
+    - Local security authentication server (__Lsass.exe__).
+
+<p align="center"><img src="https://i.imgur.com/FjXtjCq.png" width="400px" height="auto"></p>
+
+#### System Idle Process
+
+- this process (as well as the process named System) isn’t running a real user-mode image.
+- its name differs from utility to utility (because of implementation details)
+
+#### System Process and System Threads
+
+- the System process (__PID 4__) is the home for a special kind of thread that runs only in kernel mode: a __kernel-mode system thread__.
+- differs from user-mode trheats in that they run only in kernel-mode executing code loaded in system space, whether that is in Ntoskrnl exe or in any other loaded device driver.
+- don’t have a user process address space and hence must allocate any dynamic storage from operating system memory heaps, such as a paged or nonpaged pool.
+- are created by the `PsCreateSystemThread()`
