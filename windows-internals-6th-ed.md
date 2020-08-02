@@ -454,7 +454,6 @@ There are several types of device drivers:
     - the full prefix followed by a p (for __private__) .
     - for example, _Ki_ represents internal kernel functions, and _Psp_ refers to internal process support functions.
 - commonly Used Prefixes:
-
     |Prefix | Component|
     |-------|---------|
     |Alpc | Advanced Local Inter-Process Communication|
@@ -515,3 +514,64 @@ There are several types of device drivers:
 - differs from user-mode trheats in that they run only in kernel-mode executing code loaded in system space, whether that is in Ntoskrnl exe or in any other loaded device driver.
 - don’t have a user process address space and hence must allocate any dynamic storage from operating system memory heaps, such as a paged or nonpaged pool.
 - are created by the `PsCreateSystemThread()`
+
+#### Session Manager (Smss)
+
+- first user-mode process created in the system. 
+- by creating multiple instances of itself during boot-up and Terminal Services session creation,
+Smss can create multiple sessions at the same time (at maximum, four concurrent sessions, plus one
+more for each extra CPU beyond one)
+    - enhances logon performance on Terminal Server systems where multiple users connect at the same time.
+- the master Smss performs the following one-time initialization, among them:
+    - creates named pipes and mailslots used for communication between Smss, Csrss, and Lsm.
+    - initializes paging file(s)
+    - init the registry
+    - creates the Smss to initialize session 0 (noninteractive session)
+    - creates the Smss to initialize session 1 (interactive session)
+- a session startup instance of Smss does the following:
+    - calls `NtSetSystemInformation` with a request to set up kernel-mode session data structures
+    - creates the subsystem process(es) for the session (by default: __Csrss.exe__)
+- creates an instance of __Winlogon__ (interactive sessions) or __Wininit__ (for session 0)
+- then this intermediate Smss process exits (leaving the subsystem processes and Winlogon or Wininit as parent-less processes)
+
+#### Windows Initialization Process (Wininit.exe)
+
+- performs the following system initialization functions:
+    - initializes the user-mode scheduling infrastructure
+    - creates the %windir%\temp folder.
+    - creates a window station (Winsta0) and two desktops (Winlogon and Default) for processes to run on in session 0
+    - creates __Services.exe__ (Service Control Manager or SCM) 
+    - starts __Lsass.exe__ (Local Security Authentication Subsystem Server) 
+    - starts __Lsm.exe__ (Local Session Manager)
+    - waits forever for system shutdown
+
+#### Service Control Manager (SCM)
+
+- services are like UNIX _daemon processes_ or VMS _detached processes_ in that they can be
+configured to start automatically at system boot time without requiring an interactive logon.
+- can be started manually, most often, does not interact with the logged-on user.
+- service control manager is a special system process running the image `%SystemRoot% \System32\Services.exe` that is responsible for starting, stopping, and interacting with service processes.
+- there isn’t always one-to-one mapping between service processes and running services.
+
+#### Local Session Manager (Lsm.exe)
+
+- manages the state of terminal server sessions on the local machine.
+- sends requests to Smss through the ALPC port _SmSsWinStationApiPort_ to start new sessions (for example, creating the Csrss and Winlogon processes) such as when a user selects _Switch User from Explorer_
+- Lsm also communicates with Winlogon and Csrss (using a local system RPC)
+- It notifies Csrss of events such as connect, disconnect, terminate, and broadcast system message. It receives notification from Winlogon for the following events:
+    - Logon and logoff
+    - Shell start and termination
+    - Connect to a session
+    - Disconnect from a session
+    - Lock or unlock desktop
+
+#### Winlogon, LogonUI, and Userinit
+
+- the Windows logon process `%SystemRoot%\System32\Winlogon.exe` handles interactive user logons and logoffs.
+- Winlogon is notified of a user logon request when the __secure attention sequence (SAS)__ keystroke combination is entered `CTRL+ALT+DEL`.
+- identification and authentication aspects of the logon process are implemented through DLLs called __credential providers__.
+- the standard Windows credential providers implement the default Windows authentication interfaces: password and smartcard. However, developers can provide their own credential providers.
+- the logon dialog box run inside a child process of Winlogon called __LogonU__.
+- once the user name and password have been captured, they are sent to the local security
+authentication server process `%SystemRoot%\System32\Lsass.exe` to be authenticated. LSASS calls the appropriate authentication package (implemented as a DLL) to perform the actual verification, such as checking whether a password matches what is stored in the Active Directory or the SAM.
+- __Userinit__ performs some initialization of the user environment (such as running the login script and applying group policies) and then looks in the registry at the Shell value (under the same Winlogon key referred to previously) and creates a process to run the system-defined shell (by default, __Explorer.exe__). Then Userinit exits leaving Explorer.exe with no parent. 
