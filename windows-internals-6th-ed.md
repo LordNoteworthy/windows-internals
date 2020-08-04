@@ -378,10 +378,85 @@ subsequent chapter of this book:
     - also contains all the statistics for the processor, such as I/O statistics, cache manager statistics, DPC statistics, and memory manager statistics 
     - sometimes used to store cache-aligned, per-processor structures to optimize memory access, especially on NUMA systems
         - For example, the nonpaged and paged-pool system look-aside lists are stored in the KPRCB.
-- `!pcr`   <p align="center"><img src="https://i.imgur.com/2MCLigj.png" width="300px" height="auto"></p>
-- `!prcb` <p align="center"><img src="https://i.imgur.com/qXyfQvf.png" width="600px" height="auto"></p>
-- `dt nt!_KPCR` <p align="center"><img src="https://i.imgur.com/sBs1zRT.png" width="500px" height="auto"></p>
-- `dt nt!_KPRCB` <p align="center"><img src="https://i.imgur.com/8l0NNEi.png" width="400px" height="auto"></p>
+```
+0: kd> !pcr
+KPCR for Processor 0 at fffff80002c4a000:
+    Major 1 Minor 1
+	NtTib.ExceptionList: fffff80000b95000
+	    NtTib.StackBase: fffff80000b94000
+	   NtTib.StackLimit: 0000000000000000
+	 NtTib.SubSystemTib: fffff80002c4a000
+	      NtTib.Version: 0000000002c4a180
+	  NtTib.UserPointer: fffff80002c4a7f0
+	      NtTib.SelfTib: 000000007efdb000
+
+	            SelfPcr: 0000000000000000
+	               Prcb: fffff80002c4a180
+	               Irql: 0000000000000000
+	                IRR: 0000000000000000
+	                IDR: 0000000000000000
+	      InterruptMode: 0000000000000000
+	                IDT: 0000000000000000
+	                GDT: 0000000000000000
+	                TSS: 0000000000000000
+
+	      CurrentThread: fffff80002c5a1c0
+	         NextThread: fffffa800586bb50
+	         IdleThread: fffff80002c5a1c0
+
+	          DpcQueue: 
+
+0: kd> !prcb
+PRCB for Processor 0 at fffff80002c4a180:
+Current IRQL -- 13
+Threads--  Current fffff80002c5a1c0 Next fffffa800586bb50 Idle fffff80002c5a1c0
+Processor Index 0 Number (0, 0) GroupSetMember 1
+Interrupt Count -- 000174c7
+Times -- Dpc    00000012 Interrupt 00000012 
+         Kernel 00000574 User      00000072 
+
+0: kd> dt nt!_KPCR
+   +0x000 NtTib            : _NT_TIB
+   +0x000 GdtBase          : Ptr64 _KGDTENTRY64
+   +0x008 TssBase          : Ptr64 _KTSS64
+   +0x010 UserRsp          : Uint8B
+   +0x018 Self             : Ptr64 _KPCR
+   +0x020 CurrentPrcb      : Ptr64 _KPRCB
+   +0x028 LockArray        : Ptr64 _KSPIN_LOCK_QUEUE
+   +0x030 Used_Self        : Ptr64 Void
+   +0x038 IdtBase          : Ptr64 _KIDTENTRY64
+   +0x040 Unused           : [2] Uint8B
+   +0x050 Irql             : UChar
+   +0x051 SecondLevelCacheAssociativity : UChar
+   +0x052 ObsoleteNumber   : UChar
+   +0x053 Fill0            : UChar
+   +0x054 Unused0          : [3] Uint4B
+   +0x060 MajorVersion     : Uint2B
+   +0x062 MinorVersion     : Uint2B
+   +0x064 StallScaleFactor : Uint4B
+   +0x068 Unused1          : [3] Ptr64 Void
+   +0x080 KernelReserved   : [15] Uint4B
+   +0x0bc SecondLevelCacheSize : Uint4B
+   +0x0c0 HalReserved      : [16] Uint4B
+   +0x100 Unused2          : Uint4B
+   +0x108 KdVersionBlock   : Ptr64 Void
+   +0x110 Unused3          : Ptr64 Void
+   +0x118 PcrAlign1        : [24] Uint4B
+   +0x180 Prcb             : _KPRCB
+
+0: kd> dt nt!_KPRCB
+   +0x000 MxCsr            : Uint4B
+   +0x004 LegacyNumber     : UChar
+   +0x005 ReservedMustBeZero : UChar
+   +0x006 InterruptRequest : UChar
+   +0x007 IdleHalt         : UChar
+   +0x008 CurrentThread    : Ptr64 _KTHREAD
+   +0x010 NextThread       : Ptr64 _KTHREAD
+   +0x018 IdleThread       : Ptr64 _KTHREAD
+   +0x020 NestingLevel     : UChar
+   +0x021 PrcbPad00        : [3] UChar
+
+```
 
 ### Hardware Support
 
@@ -574,4 +649,156 @@ configured to start automatically at system boot time without requiring an inter
 - the logon dialog box run inside a child process of Winlogon called __LogonU__.
 - once the user name and password have been captured, they are sent to the local security
 authentication server process `%SystemRoot%\System32\Lsass.exe` to be authenticated. LSASS calls the appropriate authentication package (implemented as a DLL) to perform the actual verification, such as checking whether a password matches what is stored in the Active Directory or the SAM.
-- __Userinit__ performs some initialization of the user environment (such as running the login script and applying group policies) and then looks in the registry at the Shell value (under the same Winlogon key referred to previously) and creates a process to run the system-defined shell (by default, __Explorer.exe__). Then Userinit exits leaving Explorer.exe with no parent. 
+- __Userinit__ performs some initialization of the user environment (such as running the login script and applying group policies) and then looks in the registry at the Shell value (under the same Winlogon key referred to previously) and creates a process to run the system-defined shell (by default, __Explorer.exe__). Then Userinit exits leaving Explorer.exe with no parent.
+
+## System Mechanisms
+
+### Trap Dispatching
+
+- __interrupts__ and __exceptions__ are OS conditions that divert the processor to code outside the normal flow of control.
+- the term __trap__ refers to a processor’s mechanism for capturing an executing thread when an exception or an interrupt occurs and transferring control to a fixed location in the OS.
+- the processor transfers control to a __trap handler__, which is a function specific to a particular interrupt or exception.
+- the kernel distinguishes between interrupts and exceptions in the following way:
+    - an interrupt is an __asynchronous__ event (one that can occur at any time) that is unrelated to what the processor is executing.
+        - are generated primarily by __I/O devices, processor clocks, or timers__, and they can be enabled or disabled. 
+    - an exception, in contrast, is a __synchronous__ condition that usually results from the execution of a particular instruction.
+        - running a program a second time with the same data under the same conditions can reproduce exceptions.
+        - examples of exceptions include __memory-access violations__, __certain debugger instructions__, and __divideby-zero__ errors.
+        - the kernel also regards system service calls as exceptions (although technically they’re system traps).
+    <p align="center"><img src="https://i.imgur.com/UFazASp.png" width="400px" height="auto"></p>
+- either hardware or software can generate exceptions and interrupts:
+    - a __bus error__ exception is caused by a hardware problem, whereas a __divide-by-zero__ exception is the result of a software bug.
+    - an __I/O device__ can generate an interrupt, or the kernel itself can issue a software interrupt such as an __APC or DPC__.
+- when a hardware exception or interrupt is generated, the processor records enough machine state on the __kernel stack of the thread__ that’s interrupted to return to that point in the control flow and continue execution as if nothing had happened. If the thread was executing in user mode, Windows __switches to the thread’s kernel-mode stack__.
+- Windows then creates a __trap frame__ on the kernel stack of the interrupted thread into which it stores the execution state of the thread
+    ```c
+    0: kd> dt nt!_ktrap_frame 
+    +0x000 P1Home           : Uint8B
+    +0x008 P2Home           : Uint8B
+    +0x010 P3Home           : Uint8B
+    +0x018 P4Home           : Uint8B
+    +0x020 P5               : Uint8B
+    +0x028 PreviousMode     : Char
+    +0x029 PreviousIrql     : UChar
+    +0x02a FaultIndicator   : UChar
+    +0x02a NmiMsrIbrs       : UChar
+    +0x02b ExceptionActive  : UChar
+    +0x02c MxCsr            : Uint4B
+    +0x030 Rax              : Uint8B
+    ...
+    ```
+
+#### Interrupt Dispatching
+
+- hardware-generated interrupts typically originate from I/O devices that must notify the processor when they need service.
+    - interrupt-driven devices allow the OS to get the __maximum use out of the processor__ by overlapping central processing with I/O operations.
+    - a thread starts an I/O transfer to or from a device and then can execute other useful work while the device completes the transfer.
+    - when the device is finished, it interrupts the processor for service.
+    - pointing devices, printers, keyboards, disk drives, and network cards are generally __interrupt driven__.
+- the kernel installs interrupt trap handlers to respond to device interrupts.
+    - those handlers transfer control either to an external routine (__Interrupt Service Routine ISR__) that handles the interrupt or ;
+    - to an internal kernel routine that responds to the interrupt.
+    - device drivers supply ISRs to service device interrupts, and the kernel provides interrupt-handling routines for other types of interrupts.
+
+#### Hardware Interrupt Processing
+
+- on the hardware platforms supported by Windows, external I/O interrupts come into one of the lines on an __interrupt controller__.
+- the controller, in turn, interrupts the processor on a single line.
+- once the processor is interrupted, it queries the controller to get the __interrupt request (IRQ)__.
+- the interrupt controller translates the IRQ to an interrupt number, uses this number as an index into a structure called the __interrupt dispatch table (IDT)__, and transfers control to the appropriate interrupt dispatch routine.
+- at system boot time, Windows fills in the IDT with pointers to the kernel routines that handle each interrupt and exception.
+- Windows maps hardware IRQs to interrupt numbers in the IDT, and the system also uses the IDT to configure trap handlers for exceptions.
+```c
+kd> !idt
+
+Dumping IDT: fffff8000a0d1000
+
+00:	fffff80002be9100 nt!KiDivideErrorFaultShadow
+01:	fffff80002be9180 nt!KiDebugTrapOrFaultShadow	Stack = 0xFFFFF8000A0D49E0
+02:	fffff80002be9200 nt!KiNmiInterruptShadow	Stack = 0xFFFFF8000A0D47E0
+03:	fffff80002be9280 nt!KiBreakpointTrapShadow
+04:	fffff80002be9300 nt!KiOverflowTrapShadow
+05:	fffff80002be9380 nt!KiBoundFaultShadow
+06:	fffff80002be9400 nt!KiInvalidOpcodeFaultShadow
+07:	fffff80002be9480 nt!KiNpxNotAvailableFaultShadow
+08:	fffff80002be9500 nt!KiDoubleFaultAbortShadow	Stack = 0xFFFFF8000A0D43E0
+09:	fffff80002be9580 nt!KiNpxSegmentOverrunAbortShadow
+0a:	fffff80002be9600 nt!KiInvalidTssFaultShadow
+0b:	fffff80002be9680 nt!KiSegmentNotPresentFaultShadow
+0c:	fffff80002be9700 nt!KiStackFaultShadow
+0d:	fffff80002be9780 nt!KiGeneralProtectionFaultShadow
+0e:	fffff80002be9800 nt!KiPageFaultShadow
+...
+```
+- each processor has a separate IDT so that different processors can run different ISRs, if appropriate.
+
+#### x86 Interrupt Controllers
+
+- most x86 systems rely on either the __i8259A Programmable Interrupt Controller (PIC)__ or a variant of the __i82489 Advanced Programmable Interrupt Controller (APIC)__
+- today’s computers include an APIC.
+- PIC:
+    - works only on __uni-processors__ systems.
+    - has only __eight__ interrupt lines
+    - ibm pc arch extended it to __15__ interrupt lines (7 on master + 8 on slave).
+- APIC:
+    - work with __multiprocessor__ systems.
+    - have __256__ interrupt lines. I
+    - for compatibility, apic supports a pic mode.
+    - consists of several components: 
+        - an __I/O APIC__ that receives interrupts from devices
+        - __local APICs__ that receive interrupts from the I/O APIC on the bus and that interrupt the CPU they are associated with
+        - an i8259A-compatible interrupt controller that translates APIC input into PIC-equivalent signals.
+        <p align="center"><img src="https://i.imgur.com/w14WT37.png" width="300px" height="auto"></p>
+- x64 Windows will not run on systems that do not have an APIC because they use the APIC for interrupt control.
+- IA64 architecture relies on the __Streamlined Advanced Programmable Interrupt Controller (SAPIC)__, which is an evolution of the APIC. Even if __load balancing__ and __routing__ are present in the firmware, Windows does not take advantage of it; instead, it __statically__ assigns interrupts to processors in a __round-robin__ manner.
+```c
+0: kd> !pic
+----- IRQ Number ----- 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
+Physically in service:  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+Physically masked:      Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y  Y
+Physically requested:   Y  .  .  .  .  .  .  .  .  .  .  .  Y  .  .  .
+Level Triggered:        .  .  .  .  .  .  .  Y  .  Y  Y  Y  .  .  .  .
+
+
+0: kd> !apic
+Apic @ fffe0000  ID:0 (60015)  LogDesc:01000000  DestFmt:ffffffff  TPR F0
+TimeCnt: 00000000clk  SpurVec:3f  FaultVec:e3  error:0
+Ipi Cmd: 02000000`00000c00  Vec:00  NMI       Lg:02000000      edg high       
+Timer..: 00000000`000300fd  Vec:FD  FixedDel    Dest=Self      edg high      m
+Linti0.: 00000000`0001003f  Vec:3F  FixedDel    Dest=Self      edg high      m
+Linti1.: 00000000`000004ff  Vec:FF  NMI         Dest=Self      edg high       
+TMR: 66, 76, 86, 96, B1
+IRR: 2F, 96, D1
+ISR: D1
+
+0: kd> !ioapic
+IoApic @ FEC00000  ID:2 (20)  Arb:2000000
+Inti00.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti01.: 03000000`00000981  Vec:81  LowestDl  Lg:03000000      edg high       
+Inti02.: 01000000`000008d1  Vec:D1  FixedDel  Lg:01000000      edg high       
+Inti03.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti04.: 03000000`00000961  Vec:61  LowestDl  Lg:03000000      edg high       
+Inti05.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti06.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti07.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti08.: 01000000`000009d2  Vec:D2  LowestDl  Lg:01000000      edg high       
+Inti09.: 03000000`0000a9b1  Vec:B1  LowestDl  Lg:03000000      lvl low        
+Inti0A.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti0B.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti0C.: 03000000`00000971  Vec:71  LowestDl  Lg:03000000      edg high       
+Inti0D.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti0E.: 03000000`00000975  Vec:75  LowestDl  Lg:03000000      edg high       
+Inti0F.: 03000000`00000965  Vec:65  LowestDl  Lg:03000000      edg high       
+Inti10.: 03000000`0000a976  Vec:76  LowestDl  Lg:03000000      lvl low        
+Inti11.: 03000000`0000a986  Vec:86  LowestDl  Lg:03000000      lvl low        
+Inti12.: 03000000`0000e966  Vec:66  LowestDl  Lg:03000000      lvl low  rirr  
+Inti13.: 03000000`0000e996  Vec:96  LowestDl  Lg:03000000      lvl low  rirr  
+Inti14.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti15.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti16.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
+```
+
+#### Software Interrupt Request Levels (IRQLs)
+
+- although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
