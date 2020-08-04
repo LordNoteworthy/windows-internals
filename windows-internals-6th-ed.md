@@ -72,10 +72,9 @@
 - On 32-bit x86, a process can address 4GB of memory space.
     -  By default, Windows allocates half this address space (the lower half of the 4-GB virtual address space, from __0x00000000 through 0x7FFFFFFF__) to processes for their unique private storage.
     - and uses the other half (the upper half, addresses __0x80000000 through 0xFFFFFFFF__) for its own protected OS memory utilization.
-    - Windows supports boot-time options (the __increaseuserva__ qualifier in the Boot Configuration Database that give processes running specially marked programs (the large address space aware flag must be set in the header of the executable image) the ability to use up to 3 GB of private address space (leaving 1 GB for the kernel).
-    <p align="center"><img src="https://i.imgur.com/hnF7YlL.png" width="400px" height="auto"></p>
+    - Windows supports boot-time options (the __increaseuserva__ qualifier in the Boot Configuration Database that give processes running specially marked programs (the large address space aware flag must be set in the header of the executable image) the ability to use up to 3 GB of private address space (leaving 1 GB for the kernel).<p align="center"><img src="https://i.imgur.com/hnF7YlL.png" width="400px" height="auto"></p>
     - Although 3 GB is better than 2 GB, it’s still not enough virtual address space to map very large (multigigabyte) databases.
-    - To address this need on 32-bit systems, Windows provides a mechanism called **Address Windowing Extension (AWE)**, which allows a 32-bit application to allocate up to 64 GB of physical memory and then map views, or windows, into its 2-GB virtual address space.
+    - To address this need on 32-bit systems, Windows provides a mechanism called **Address Windowing Extension (AWE)**, which allows a 32-bit application to allocate up to __64 GB__ of physical memory and then map views, or windows, into its 2-GB virtual address space.
     - Although using AWE puts the burden of managing mappings of virtual to physical memory on the programmer, it does address the need of being able to directly access more physical memory than can be mapped at any one time in a 32-bit process address space.
 - 64-bit Windows provides a much larger address space for processes:
     - 7152 GB on IA-64 systems
@@ -651,7 +650,7 @@ configured to start automatically at system boot time without requiring an inter
 authentication server process `%SystemRoot%\System32\Lsass.exe` to be authenticated. LSASS calls the appropriate authentication package (implemented as a DLL) to perform the actual verification, such as checking whether a password matches what is stored in the Active Directory or the SAM.
 - __Userinit__ performs some initialization of the user environment (such as running the login script and applying group policies) and then looks in the registry at the Shell value (under the same Winlogon key referred to previously) and creates a process to run the system-defined shell (by default, __Explorer.exe__). Then Userinit exits leaving Explorer.exe with no parent.
 
-## System Mechanisms
+## Chapter 3 System Mechanisms
 
 ### Trap Dispatching
 
@@ -802,3 +801,125 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 #### Software Interrupt Request Levels (IRQLs)
 
 - although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
+
+
+## Chapter 10 Memory Management
+
+## Introduction to the Memory Manager
+
+- because the VAS might be larger or smaller than the PM on the machine, the memory manager has two primary tasks:
+    - __translating, or mapping__, a process’s VAS into PM so that when a thread running in the context of that process reads or writes to the VAS, the correct physical address is referenced. (The subset of a process’s virtual address space that is physically resident is called the __working set__).
+    - __paging__ some of the contents of memory to disk when it becomes overcommitted—that is, when running threads or system code try to use more PM than is currently available—and bringing the contents back into PM when needed.
+
+### Memory Manager Components
+
+- memory manager consists of the following components:
+    - a set of executive system services for allocating, deallocating, and managing virtual memory, most of which are exposed through the Windows API or kernel-mode device driver interfaces.
+    - __translation-not-valid__ and access fault trap handler for resolving hardware-detected memory management exceptions and making virtual pages resident on behalf of a process.
+    - Six __key top-level routines__, each running in one of six different kernel-mode threads in the System process:
+        - __balance set manager__ (`KeBalanceSetManager`, priority 16). It calls an inner routine, the __working set manager__ (`MmWorkingSetManager`), once per second as well as when free memory falls below a certain threshold. The working set manager drives the overall memory management policies, such as __working set trimming, aging, and modified page writing__. 
+        - __process/stack swapper__ (`KeSwapProcessOrStack`, priority 23) performs both process and kernel thread stack inswapping and outswapping. The balance set manager and the thread-scheduling code in the kernel awaken this thread when an inswap or outswap operation needs to take place.
+        - __modified page writer__ (`MiModifiedPageWriter`, priority 17) writes __dirty pages__ on the modified list back to the appropriate paging files. This thread is awakened when the size of the modified list needs to be reduced. 
+        - __mapped page writer__ (`MiMappedPageWriter`, priority 17) writes dirty pages in mapped files to disk (or remote storage). It is awakened when the size of the modified list needs to be reduced or if pages for mapped files have been on the modified list for more than 5 minutes. This second modified page writer thread is necessary because it can generate page faults that result in requests for free pages. If there were no free pages and there was only one modified page writer thread, the system could deadlock waiting for free pages.
+        - __segment dereference thread__ (`MiDereferenceSegmentThread`, priority 18) is responsible for cache reduction as well as for page file growth and shrinkage. (For example, if there is no VAS for paged pool growth, this thread trims the page cache so that the paged pool used to anchor it can be freed for reuse.)
+        - __zero page thread__ (`MmZeroPageThread`, base priority 0) zeroes out pages on the free list so that a cache of zero pages is available to satisfy future demand-zero page faults. Unlike the other routines described here, this routine is not a top-level thread function but is called by the top-level thread routine Phase1Initialization. MmZeroPageThread never returns to its caller, so in effect the Phase 1 Initialization thread becomes the zero page thread by calling this routine. Memory zeroing in some cases is done by a faster function called `MiZeroInParallel`.
+
+#### Internal Synchronization
+
+- the memory manager is __fully reentrant__ and supports simultaneous execution on multiprocessor systems.
+- achieved by using several different internal synchronization mechanisms, such as spinlocks, to control access to its own internal data structures. Some of theses accesses are:
+    - Dynamically allocated portions of the system VAS
+    - System working sets
+    - Kernel memory pools
+    - The list of loaded drivers
+    - The list of paging files
+    - Physical memory lists
+    - Image base randomization (ASLR) structures
+    - Each individual entry in the page frame number (PFN) database.
+
+#### Examining Memory Usage
+
+- __vmmap__, __rammap__ or __process explorer__ are nice tools to examine memory usage.
+    ```c
+        0: kd> !vm
+    Page File: \??\C:\pagefile.sys
+    Current:   4193784 Kb  Free Space:   4193780 Kb
+    Minimum:   4193784 Kb  Maximum:     12581352 Kb
+
+    Physical Memory:          1048446 (    4193784 Kb)
+    Available Pages:           820027 (    3280108 Kb)
+    ResAvail Pages:            973277 (    3893108 Kb)
+    Locked IO Pages:                0 (          0 Kb)
+    Free System PTEs:        33494979 (  133979916 Kb)
+    Modified Pages:              4801 (      19204 Kb)
+    Modified PF Pages:           4771 (      19084 Kb)
+    Modified No Write Pages:        0 (          0 Kb)
+    NonPagedPool Usage:          9217 (      36868 Kb)
+    NonPagedPool Max:          774140 (    3096560 Kb)
+    PagedPool  0:               32876 (     131504 Kb)
+    PagedPool  1:                4124 (      16496 Kb)
+    PagedPool  2:                   0 (          0 Kb)
+    PagedPool  3:                   0 (          0 Kb)
+    PagedPool  4:                  57 (        228 Kb)
+    PagedPool Usage:            37057 (     148228 Kb)
+    PagedPool Maximum:       33554432 (  134217728 Kb)
+    Processor Commit:             274 (       1096 Kb)
+    Session Commit:              7647 (      30588 Kb)
+    Syspart SharedCommit 0
+    Shared Commit:               9386 (      37544 Kb)
+    Special Pool:                   0 (          0 Kb)
+    Kernel Stacks:               8220 (      32880 Kb)
+    Pages For MDLs:              2331 (       9324 Kb)
+    Pages For AWE:                  0 (          0 Kb)
+    NonPagedPool Commit:            0 (          0 Kb)
+    PagedPool Commit:           37108 (     148432 Kb)
+    Driver Commit:               3082 (      12328 Kb)
+    Boot Commit:                    0 (          0 Kb)
+    System PageTables:              0 (          0 Kb)
+    VAD/PageTable Bitmaps:       2214 (       8856 Kb)
+    ProcessLockedFilePages:         0 (          0 Kb)
+    Pagefile Hash Pages:            0 (          0 Kb)
+    Sum System Commit:          70262 (     281048 Kb)
+    Total Private:             107649 (     430596 Kb)
+    Misc/Transient Commit:      55573 (     222292 Kb)
+    Committed pages:           233484 (     933936 Kb)
+    Commit limit:             2096416 (    8385664 Kb)
+    ```
+
+### Services Provided by the Memory Manager
+
+- the Windows API has three groups of functions for managing memory in applications: 
+    - __heap functions__ (_Heapxxx_ and the older interfaces _Localxxx_ and _Globalxxx_, which internally make use of the _Heapxxx_ APIs), which may be used for allocations __smaller than a page__;
+    - virtual memory functions, which operate with page granularity (_Virtualxxx_);
+    - and __memory mapped file functions__ (`CreateFileMapping`, `CreateFileMappingNuma`, `MapViewOfFile`, `MapViewOfFileEx`, and `MapViewOfFileExNuma`).
+
+#### Large and Small Pages
+
+- page size:
+
+    | Architecture | Small Page  Size| Large Page Size | Small Pages per Large Page|
+    |--------------|-----------------|-----------------|---------------------------|
+    |x86 | 4 KB|  4 MB (2 MB if PAE enabled) |1,024 (512 with PAE) |
+    |x64 | 4 KB  | 2 MB |  512 |
+    |IA64 | 8 KB | 16 MB  |2,048 |
+- primary advantage of large pages is __speed of address translation__ for references to other data within the large page.
+- first reference to any byte within a large page will cause the hardware’s __translation look-aside buffer TLB__  to have in its cache the information necessary to translate references to any other byte within the large page.
+- To take advantage of large pages on systems with more than 2 GB of RAM, Windows maps with large pages:
+    - the core OS images (`Ntoskrnl.exe` and `Hal.dll`) 
+    - as well as core OS data (such as the initial part of nonpaged pool and the data structures that describe the state of each physical memory page).
+    - also automatically maps I/O space requests (calls by device drivers to `MmMapIoSpace`) with large pages if the request is of satisfactory large page length and alignment.
+    - user mode apps can use `MEM_LARGE_PAGE` during mem alloc.
+    - drivers can set _LargePageDrivers_.
+- few notes regarding large pages:
+    - allocating large pages could fail as freeing physical memory does become fragmented as the system runs.
+    - tt is not possible to specify anything but __read/write__ access to large pages. 
+    - the memory is also always __nonpageable__, because the page file system does not support large page.
+    - if a large page contains, for example, both __read-only code__ and __read/write data__, the page must be marked as __read/write__, which means that the code will be writable. This means that device drivers or other kernel-mode code could, as a result of a bug, modify what is supposed to be __read-only__ OS or driver code without causing a memory access violation.
+
+### Reserving and Committing Pages
+
+- pages in a process VAS are __free, reserved, committed, or shareable__. 
+- __committed__ and __shareable__ pages are pages that, when accessed, ultimately translate to valid pages in physical memory.
+- __shared pages__ are usually mapped to a view of a section, which in turn is part or all of a file, but may instead represent a portion of page file space.
+    - all shared pages can potentially be shared with other processes.
+    - sections are exposed in the Windows API as __file mapping objects__.
