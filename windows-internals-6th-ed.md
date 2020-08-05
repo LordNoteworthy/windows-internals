@@ -953,13 +953,62 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 #### Shared Memory and Mapped Files
 
 - __shared memory__ can be defined as memory that is visible to more than one process or that is present in more than one process VAS.
--  for example, if two processes use the same DLL, it would make sense to load the referenced code pages for that DLL into physical memory __only once++ and share those pages between all processes that map the DLL. <p align="center"><img src="https://i.imgur.com/ORc9BlC.png" width="300px" height="auto"></p>
+-  for example, if two processes use the same DLL, it would make sense to load the referenced code pages for that DLL into physical memory __only once__ and share those pages between all processes that map the DLL. <p align="center"><img src="https://i.imgur.com/ORc9BlC.png" width="300px" height="auto"></p>
 - a __section object__ can be connected to an __open file on disk (called a mapped file)__ or __to committed memory (to provide shared memory)__.
 - sections mapped to committed memory are called __page-file-backed sections__ because the pages are written to the paging file (__as opposed to a mapped file__) if demands on physical memory require it.
 - as with any other empty page that is made visible to user mode (such as private committed pages), shared committed pages are __always zero-filled__ when they are first accessed to ensure that no sensitive data is ever leaked.
-- To create a section object, call the Windows `CreateFileMapping` or `CreateFileMappingNuma` function, specifying the file handle to map it to (or __INVALID_HANDLE_VALUE__ for a page-file-backed section).
+- to create a section object, call the Windows `CreateFileMapping` or `CreateFileMappingNuma` function, specifying the file handle to map it to (or __INVALID_HANDLE_VALUE__ for a page-file-backed section).
 - a section object can refer to files that are __much larger__ than can fit in the address space of a process.
 - to access a very large section object, a process can map only the portion of the section object that it requires (called a view of the section) by calling the `MapViewOfFile`, `MapViewOfFileEx`, or `MapViewOfFileExNuma` function and then specifying the range to map.
 - mapping views permits processes to __conserve address space__ because only the views of the section object needed at the time must be mapped into memory.
 
 #### Protecting Memory
+
+- Windows provides memory protection in four primary ways.
+    1. all systemwide data structures and memory pools used by kernel-mode system components can be accessed only while in kernel mode.
+        - user-mode threads can’t access these pages
+        - if they attempt to do so, the hardware generates a fault, which in turn the memory manager reports to the thread as an access violation.
+    2. each process has a separate, __private address space__, protected from being accessed by any thread belonging to another process. 
+        - even shared memory is not really an exception to this because each process accesses the shared regions using addresses that are part of its __own VAS__.
+    3. in addition to the implicit protection virtual-to-physical address translation offers, all processors supported by Windows provide some form of __hardware-controlled memory protection__ (such as read/write, read-only, and so on).
+    4. shared memory section objects have standard Windows __ACLs__ that are checked when processes attempt to open them, thus limiting access of shared memory to those processes with the proper rights.
+
+#### No Execute Page Protection
+
+- __No execute__ page protection (also referred to as __data execution prevention (DEP)__) causes an attempt to transfer control to an instruction in a page marked as “no execute” to generate an access fault.
+    - prevent stack-based overflows
+    - catch poorly written programs that don’t correctly set permissions on pages from which they intend to execute code.
+- in a illegal reference:
+    - in kernel, fails with `ATTEMPTED_EXECUTE_OF_NOEXECUTE_MEMORY` bugcheck code.
+    - in user mode, fails with `STATUS_ACCESS_VIOLATION` exception.
+- on 32-bit x86 systems that support DEP, bit 63 in the page table entry (PTE) is used to mark a page as nonexecutable.
+    - DEP feature is available only when the processor is running in __Physical Address Extension (PAE)__ mode.
+    - requires loading the PAE kernel `%SystemRoot%\System32\Ntkrnlpa.exe`.
+    - the OS loader automatically loads the PAE kernel on 32-bit systems that support hardware DEP.
+    - applied only to __thread stacks__ and __usermode pages__, not to paged pool and session pool.
+    - processes depends on the value of the BCD nx option (OptIn, OptOut, AlwaysOn, AlwaysOff)
+- on 64-bit versions of Windows,:
+    - execution protection is __always applied to all 64-bit processes and device drivers__.
+    - can be disabled only by setting the nx BCD option to _AlwaysOff_.
+    - applied to __thread stacks__ (both user and kernel mode), __usermode pages__ not specifically marked as __executable__, __kernel paged pool__, and __kernel session pool__.
+- on Windows client versions (both 64-bit and 32-bit) execution protection for 32-bit processes is configured by default to apply only to __core Windows operating system executables (OptIn)__.
+- even if you force DEP to be enabled, there are still other methods through which applications can disable DEP for their own image:
+    - image loader will verify the signature of the executable against known __copy-protection mechanisms__ (such as SafeDisc and SecuROM) and disable execution protection to provide compatibility with older copy protected software such as computer games.
+- if the system is in _OptIn_ or _OptOut_ mode and executing a 32-bit process, the `SetProcessDEPPolicy` function allows a process to dynamically disable DEP or to permanently enable it.
+
+#### Software Data Execution Prevention
+
+- for older processors that do not support hardware no execute protection, Windows supports limited __software DEP__.
+    - reduces SEH exploits.
+    - if image is not built with __/SAFESEH__, software DEP guards against SEH exploits with __Structured Exception Handler Overwrite Protection (SEHOP)__.
+    - __ALSR__ make it harder to know the location of the function pointed to by the symbolic exception registration record.
+- to futher mitiguate again SEH exploits when /SAFESEH is not present:
+    - a mechanism called __Image Dispatch Mitigation__ ensures that the SEH handler is located within the same image section as the function that raised an exception, which is normally the case for most programs (although not necessarily, since some DLLs might have exception handlers that were set up by the main executable, which is why this mitigation is off by default).
+    - Executable Dispatch Mitigation further makes sure that the SEH handler is located within an executable page—a less strong requirement than Image Dispatch Mitigation, but one with fewer compatibility issues.
+- two other methods for software DEP that the system implements are:
+    - __stack cookies__: relies on the compiler to insert special code at the beginning and end of each potentially exploitable function.
+        - the code saves a special numerical value (the cookie) on the stack on entry and validates the cookie’s value before returning to the caller saved on the stack.
+        - the cookie value is computed for each boot when executing the first user-mode thread, and it is saved in the `KUSER_SHARED_DATA` structure. The image loader reads this value and initializes it when a process starts executing in user mode.
+    - the cookie value that is calculated is also saved for use with the `EncodeSystemPointer` and `DecodeSystemPointer` APIs, which implement pointer encoding
+        - static pointers that are dynamically called runs the risk of having malicious code __overwrite the pointer values__ with code that the malware controls. 
+        -  These APIs provide similar protection but with a __per-process cookie__ (created on demand) instead of a __per-system cookie__.
