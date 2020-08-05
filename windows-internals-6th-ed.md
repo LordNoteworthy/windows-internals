@@ -916,10 +916,50 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
     - the memory is also always __nonpageable__, because the page file system does not support large page.
     - if a large page contains, for example, both __read-only code__ and __read/write data__, the page must be marked as __read/write__, which means that the code will be writable. This means that device drivers or other kernel-mode code could, as a result of a bug, modify what is supposed to be __read-only__ OS or driver code without causing a memory access violation.
 
-### Reserving and Committing Pages
+#### Reserving and Committing Pages
 
 - pages in a process VAS are __free, reserved, committed, or shareable__. 
 - __committed__ and __shareable__ pages are pages that, when accessed, ultimately translate to valid pages in physical memory.
 - __shared pages__ are usually mapped to a view of a section, which in turn is part or all of a file, but may instead represent a portion of page file space.
     - all shared pages can potentially be shared with other processes.
     - sections are exposed in the Windows API as __file mapping objects__.
+
+#### Commit Limit
+
+- __commitment or commit charge__; this is the first of the two numbers, which represents the total of all committed virtual memory in the system.
+- __system commit limit__ or simply the commit limit, on the amount of committed virtual memory that can exist at any one time.
+    - corresponds to the current total size of all paging files, plus the amount of RAM that is usable by the OS.
+    <p align="center"><img src="https://i.imgur.com/WwRPq6Y.png" width="400px" height="auto"></p>
+
+#### Locking Memory
+
+- pages can be locked in memory in two ways:
+    - Windows applications can call the `VirtualLock` function to lock pages in their process working set.
+        - pages locked using this mechanism remain in memory until explicitly unlocked or until the process that locked them terminates. 
+        - the number of pages a process can lock __can’t exceed its minimum working set size minus eight pages__.
+        - therefore, if a process needs to lock more pages, it can increase its working set minimum with the `SetProcessWorkingSetSizeEx`.
+    - device drivers can call the kernel-mode functions `MmProbeAndLockPages`, `MmLockPagableCodeSection`, `MmLockPagableDataSection`, or `MmLockPagableSectionByHandle`.
+        - pages locked using this mechanism remain in memory until explicitly unlocked. 
+        - the last three of these APIs __enforce no quota__ on the number of pages that can be locked in memory because the resident available page charge is obtained when the driver first loads; this ensures that it can never cause a system crash due to overlocking.
+        - for the first API, quota charges must be obtained or the API will return a failure status.
+
+#### Allocation Granularity
+
+- Windows aligns __each region__ of reserved process address space to begin on an integral boundary defined by the value of the system allocation granularity, which can be retrieved from the Windows `GetSystemInfo` or `GetNativeSystemInfo` function.
+- this value is __64 KB__, a granularity that is used by the memory manager to efficiently allocate metadata (for example, VADs, bitmaps, and so on) to support various process operations.
+- Windows kernel-mode code isn’t subject to the same restrictions; it can reserve memory on a __single-page granularity__ (although this is not exposed to device drivers for the reasons detailed earlier).
+- Windows ensures that the __size and base__ of the region is a __multiple__ of the system page size, whatever that might be.
+
+#### Shared Memory and Mapped Files
+
+- __shared memory__ can be defined as memory that is visible to more than one process or that is present in more than one process VAS.
+-  for example, if two processes use the same DLL, it would make sense to load the referenced code pages for that DLL into physical memory __only once++ and share those pages between all processes that map the DLL. <p align="center"><img src="https://i.imgur.com/ORc9BlC.png" width="300px" height="auto"></p>
+- a __section object__ can be connected to an __open file on disk (called a mapped file)__ or __to committed memory (to provide shared memory)__.
+- sections mapped to committed memory are called __page-file-backed sections__ because the pages are written to the paging file (__as opposed to a mapped file__) if demands on physical memory require it.
+- as with any other empty page that is made visible to user mode (such as private committed pages), shared committed pages are __always zero-filled__ when they are first accessed to ensure that no sensitive data is ever leaked.
+- To create a section object, call the Windows `CreateFileMapping` or `CreateFileMappingNuma` function, specifying the file handle to map it to (or __INVALID_HANDLE_VALUE__ for a page-file-backed section).
+- a section object can refer to files that are __much larger__ than can fit in the address space of a process.
+- to access a very large section object, a process can map only the portion of the section object that it requires (called a view of the section) by calling the `MapViewOfFile`, `MapViewOfFileEx`, or `MapViewOfFileExNuma` function and then specifying the range to map.
+- mapping views permits processes to __conserve address space__ because only the views of the section object needed at the time must be mapped into memory.
+
+#### Protecting Memory
