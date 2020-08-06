@@ -1012,3 +1012,137 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
     - the cookie value that is calculated is also saved for use with the `EncodeSystemPointer` and `DecodeSystemPointer` APIs, which implement pointer encoding
         - static pointers that are dynamically called runs the risk of having malicious code __overwrite the pointer values__ with code that the malware controls. 
         -  These APIs provide similar protection but with a __per-process cookie__ (created on demand) instead of a __per-system cookie__.
+
+#### Copy-on-Write
+
+- copy-on-write page protection is an optimization the memory manager uses to conserve physical memory.
+- defers making a copy of the pages until the page is written to.
+- two processes are sharing three pages, each marked copy-on-write, but neither of the two processes has attempted to modify any data on the pages.
+ <p align="center"><img src="https://i.imgur.com/qbiqSC3.png" width="400px" height="auto"></p>
+- it a thread in either process writes to a page, a memory management fault is generated. 
+    - memory manager sees that the write is to a copy-on-write page,
+    - it allocates a new read/write page in physical memory,
+    - copies the contents of the original page to the new page
+    - updates the corresponding page-mapping information in this process to point to the new location,
+    - the newly copied page is now private to the process that did the writing and isn’t visible to the other process still sharing the copy-on-write page.
+    <p align="center"><img src="https://i.imgur.com/Hx0IPIE.png" width="400px" height="auto"></p>
+
+#### Address Windowing Extensions
+
+- an app that needs to make more than 2 GB (or 3 GB) of data easily available in a single process could do so via __file mapping__, remapping a part of its address space into various portions of a large file.
+- Windows provides a set of functions called __Address Windowing Extensions (AWE)__ to allow a 32-bits process to allocate more physical memory than can be represented in its VAS.
+- it then can access the physical memory by mapping a portion of its VAS into selected portions of the physical memory at various times.
+- allocating and using memory via the AWE functions is done in three steps:
+    1. allocating the physical memory to be used:  `AllocateUserPhysicalPages` or `AllocateUserPhysicalPagesNuma`.
+    2. creating one or more regions of VAS to act as windows to map views of the physical memory. The application uses the Win32 `VirtualAlloc(Ex)`, or `VirtualAllocExNuma` function with the __MEM_PHYSICAL__ flag. 
+    3. to actually use the memory, the app uses `MapUserPhysicalPages` or `MapUserPhysicalPagesScatter` to map a portion of the physical region allocated in step 1 into one of the virtual regions, or windows, allocated in step 2.
+    <p align="center"><img src="https://i.imgur.com/UD6vywq.png" width="450px" height="auto"></p>
+
+### Kernel-Mode Heaps (System Memory Pools)
+
+- at system initialization, the memory manager creates two dynamically sized memory pools, or heaps, that most kernel-mode components use to allocate system memory:
+    - __nonpaged pool__:  consists of ranges of system virtual addresses that are guaranteed to reside in physical memory at all times + can be accessed from any IRQL.
+    - __paged pool__:  a region of virtual memory in system space that can be paged into and out of the system. Device drivers that don’t need to access the memory from DPC/dispatch level or above can use paged pool. It is accessible from any process context.
+- systems start with __four paged pools__ and __one nonpaged pool__; more are created, up to a maximum of __64__, depending on the number of NUMA nodes on the system.
+- in addition to paged/nonpaged pool, there is a pool region in __session space__, which is used for data that is common to all processes in the session.
+- also, a __special pool__:  allocations from special pool are surrounded by pages marked as no-access to help isolate problems in code that accesses memory before or after the region of pool it allocated.
+
+#### Pool Sizes
+
+- initial size: 3% of ram, if less than 40 MB, use 40 MB insted as long as 10% of RAM results in more than 40MB; otherwise 10 percent of RAM is chosen as a minimum.
+
+|Pool Type | Maximum on 32-Bit | Maximum on 64-Bit Systems |
+|----------|-------------------|---------------------------|
+|Nonpaged | 75% of physical memory or 2 GB, whichever is smaller | 75% of physical memory or 128 GB, whichever is smaller|
+| Paged | 2 GB | 128 GB |
+
+```c
+Page File: \??\C:\pagefile.sys
+  Current:   4193784 Kb  Free Space:   4193780 Kb
+  Minimum:   4193784 Kb  Maximum:     12581352 Kb
+
+Physical Memory:          1048446 (    4193784 Kb)
+Available Pages:           826358 (    3305432 Kb)
+ResAvail Pages:            974026 (    3896104 Kb)
+Locked IO Pages:                0 (          0 Kb)
+Free System PTEs:        33496170 (  133984680 Kb)
+Modified Pages:              4825 (      19300 Kb)
+Modified PF Pages:           4808 (      19232 Kb)
+Modified No Write Pages:        0 (          0 Kb)
+NonPagedPool Usage:          9111 (      36444 Kb)
+NonPagedPool Max:          774140 (    3096560 Kb)
+PagedPool  0:               32829 (     131316 Kb)
+PagedPool  1:                4109 (      16436 Kb)
+PagedPool  2:                   0 (          0 Kb)
+PagedPool  3:                   0 (          0 Kb)
+PagedPool  4:                  54 (        216 Kb)
+PagedPool Usage:            36992 (     147968 Kb)
+PagedPool Maximum:       33554432 (  134217728 Kb)
+Processor Commit:             176 (        704 Kb)
+Session Commit:              7651 (      30604 Kb)
+Syspart SharedCommit 0
+Shared Commit:               9231 (      36924 Kb)
+Special Pool:                   0 (          0 Kb)
+Kernel Stacks:               7707 (      30828 Kb)
+Pages For MDLs:              2331 (       9324 Kb)
+Pages For AWE:                  0 (          0 Kb)
+NonPagedPool Commit:            0 (          0 Kb)
+PagedPool Commit:           36992 (     147968 Kb)
+Driver Commit:               3082 (      12328 Kb)
+Boot Commit:                    0 (          0 Kb)
+System PageTables:              0 (          0 Kb)
+VAD/PageTable Bitmaps:       1993 (       7972 Kb)
+ProcessLockedFilePages:         0 (          0 Kb)
+Pagefile Hash Pages:            0 (          0 Kb)
+Sum System Commit:          69163 (     276652 Kb)
+Total Private:             102655 (     410620 Kb)
+Misc/Transient Commit:      55148 (     220592 Kb)
+Committed pages:           226966 (     907864 Kb)
+Commit limit:             2096416 (    8385664 Kb)
+```
+
+- use _poolmon_ to monitor pool usage; or:
+```
+ kd> !poolused 2
+
+*** CacheSize too low - increasing to 128 MB
+
+Max cache size is       : 134217728 bytes (0x20000 KB) 
+Total memory in cache   : 157892 bytes (0x9b KB) 
+Number of regions cached: 292
+2257 full reads broken into 2626 partial reads
+    counts: 2241 cached/385 uncached, 85.34% cached
+    bytes : 371524 cached/139204 uncached, 72.74% cached
+** Transition PTEs are implicitly decoded
+** Prototype PTEs are implicitly decoded
+..
+ Sorting by NonPaged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+ Cont      1094      6525216          0            0	Contiguous physical memory allocations for device drivers 
+ EtwB       128      5041136          4       163840	Etw Buffer , Binary: nt!etw
+ AmlC        31      2031616          0            0	ACPI AMLI Pooltags 
+ Pool         5      1705552          0            0	Pool tables, etc. 
+ AmlH         3      1572864          0            0	ACPI AMLI Pooltags 
+ ...
+
+ kd> !poolused 4
+..
+ Sorting by Paged Pool Consumed
+
+               NonPaged                  Paged
+ Tag     Allocs         Used     Allocs         Used
+
+ CM31         0            0      19797     91705344	Internal Configuration manager allocations , Binary: nt!cm
+ CM25         0            0       2764     12546048	Internal Configuration manager allocations , Binary: nt!cm
+ MmRe         0            0        958     11071552	ASLR relocation blocks , Binary: nt!mm
+ MmSt         0            0       2808      6790672	Mm section object prototype ptes , Binary: nt!mm
+ CcPD         0            0          8      4314976	Prefetcher trace dump , Binary: nt!ccpf
+ CIcr         0            0         89      2976080	Code Integrity allocations for image integrity checking , Binary: ci.dll
+ Ntff         5         1600       2109      2598288	FCB_DATA , Binary: ntfs.sys
+ ...
+```
+
+### Look-Aside Lists
