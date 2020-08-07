@@ -1146,3 +1146,81 @@ Number of regions cached: 292
 ```
 
 ### Look-Aside Lists
+
+- Windows provides a fast memory allocation mechanism called __look-aside lists__.
+- the difference between pools and look-aside lists:
+    - general pool allocations can __vary__ in size, a look-aside list contains only __fixed-sized__ blocks. 
+    - although the general pools are more flexible in terms of what they can supply, look-aside lists are __faster__ because they don’t use any __spinlocks__.
+- contents and sizes of the various system look-aside lists:
+```
+1: kd> !lookaside
+
+Lookaside "nt!CcTwilightLookasideList" @ 0xfffff80002c49280  Tag(hex): 0x6b576343 "CcWk"
+    Type           =       0000  NonPagedPool
+    Current Depth  =          0  Max Depth  =         34
+    Size           =         32  Max Alloc  =       1088
+    AllocateMisses =        534  FreeMisses =        467
+    TotalAllocates =        759  TotalFrees =        715
+    Hit Rate       =         29% Hit Rate   =         34%
+
+Lookaside "nt!IopSmallIrpLookasideList" @ 0xfffff80002c49d00  Tag(hex): 0x73707249 "Irps"
+    Type           =       0000  NonPagedPool
+    Current Depth  =          0  Max Depth  =          4
+    Size           =        280  Max Alloc  =       1120
+    AllocateMisses =        217  FreeMisses =         66
+    TotalAllocates =        263  TotalFrees =        113
+    Hit Rate       =         17% Hit Rate   =         41%
+...
+
+Total NonPaged currently allocated for above lists =        0
+Total NonPaged potential for above lists           =    75624
+Total Paged currently allocated for above lists    =        0
+Total Paged potential for above lists              =   367832
+```
+
+### Heap Manager
+
+- manages allocations inside __larger memory areas__ reserved using the page granularity memory allocation functions.
+- the allocation granularity in the heap manager is relatively small: __8 bytes__ on 32-bit systems, and __16 bytes__ on 64-bit. systems.
+- legacy APIs (prefixed with either __Local__ or __Global__) are provided to support older Windows applications, which also internally call the heap manager, using some of its specialized interfaces to support legacy behavior.
+
+#### Types of Heaps
+
+- each process has at least one heap: the __default process heap__.
+- defaults to 1 MB in size, but it can be made bigger by using the `/HEAP` linker flag
+- this size is just the initial reserve, however—it will expand automatically as needed.
+- processes can also create additional __private heaps__ with the `HeapCreate`.
+
+#### Heap Manager Structure
+
+- the heap manager is structured in two layers: an __optional front-end layer__ and the __core heap__.
+- the core heap handles the basic functionality and is mostly common across the usermode and kernel-mode heap implementations. 
+- the core functionality includes the management of blocks inside segments, the management of the segments, policies for extending the heap, committing and decommitting memory, and management of the large blocks. <p align="center"><img src="https://i.imgur.com/pIABTFh.png" width="450px" height="auto"></p>
+- for user-mode heaps only, an optional front-end heap layer can exist on top of the existing core functionality. 
+- the only front-end supported on Windows is the __Low Fragmentation Heap (LFH)__. Only one front-end layer can be used for one heap at one time.
+
+#### Heap Synchronization
+
+- the heap manager supports __concurrent access__ from multiple threads by default.
+- however, if a process is __single threaded__ or uses an external mechanism for __synchronization__, it can tell the heap manager to avoid the overhead of synchronization by specifying `HEAP_NO_SERIALIZE` either at heap creation or on a per-allocation basis.
+
+#### The Low Fragmentation Heap
+
+- many Windows apps have relatively small heap memory usage (~ less than 1 MB).
+    - for this class of apps, the heap manager’s best-fit policy helps keep a low memory footprint for each process.
+    - however, this strategy does not scale for __large processes__ and __multiprocessor__ machines.
+    - in these cases, memory available for heap usage might be reduced as a result of __heap fragmentation__.
+    - performance can suffer in scenarios where only certain sizes are often used concurrently from different threads scheduled to run on different processors.
+    - this happens because several processors need to modify the same memory location (i.e the head of the look-aside list for that particular size) at the same time, thus causing significant contention for the corresponding cache line.
+- LFH avoids fragmentation by managing allocated blocks in predetermined different block-size ranges called __buckets__. 
+- LFH chooses the bucket that maps to the __smallest block__ large enough to hold the required size.
+
+|Buckets |Granularity | Range |
+|--------|------------|-------|
+|1–32 | 8 | 1–256 |
+|33–48 | 16 | 257–512 |
+|49–64 |32 | 513–1,024 |
+|65–80 | 64  |1,025–2,048 |
+|81–96 | 128 | 2,049–4,096 |
+|97–112  |256 | 4,097–8,194 |
+|113–128  |512 | 8,195–16,384 |
