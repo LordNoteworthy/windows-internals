@@ -1224,3 +1224,80 @@ Total Paged potential for above lists              =   367832
 |81–96 | 128 | 2,049–4,096 |
 |97–112  |256 | 4,097–8,194 |
 |113–128  |512 | 8,195–16,384 |
+
+#### Heap Security Features
+
+- heap manager have some techniques to minimize heap-based exploits:
+    - metadata used by the heap for internal management is packed with high degree of randomization
+    - blocks are subjects to integrity check to the header to detect buffer overruns.
+    - randomization of the base address (or handle).
+- by using `HeapSetInformation` with _HeapEnableTerminationOnCorruption_ class, a process can opt in for an automatic termination in case if anomalies.
+- dump metadata fields from a heap block:
+```
+0:000> !heap -i 001a0000
+Heap context set to the heap 0x001a0000
+0:000> !heap -i 1e2570
+Detailed information for block entry 001e2570
+Assumed heap : 0x001a0000 (Use !heap -i NewHeapHandle to change)
+Header content : 0x1570F4EC 0x0C0015BE (decoded : 0x07010006 0x0C00000D)
+Owning segment : 0x001a0000 (offset 0)
+Block flags : 0x1 (busy )
+Total block size : 0x6 units (0x30 bytes)
+Requested size : 0x24 bytes (unused 0xc bytes)
+Previous block size: 0xd units (0x68 bytes)
+Block CRC : OK - 0x7
+Previous block : 0x001e2508
+Next block : 0x001e25a0
+```
+
+#### Heap Debugging Features
+
+- the heap manager leverages the 8 bytes used to store internal metadata as a consistency checkpoint which helps detecting potential heap errors and bugs:
+    - __enable tail checking__: the end of the each block carries a signature that is checked when the block is released.
+    - __enable free checking__: free block is filled with a pattern that is checked at various points when the heap manager needs to access the block.
+    - __parameter checking__: extensive checking of the parameteres passed to the heap functions.
+    - __heap validation__ the entire heap is validated at each heap call.
+    - __heap tagging and strack traces support__: supports specifying tags for allocation and/or captures user-mode stack traces for the heap calls to help narrow the possible causes of a heap error.
+
+#### Pageheap
+
+- because the tail and free checking might be discovering corruptions that occurred well before the problem was detected, an additional heap debugging capability, called __pageheap__, is provided that directs all or part of the heap calls to a different heap manager.
+
+#### Fault Tolerant Heap
+
+- Windows includes a feature called the __fault tolerant heap (FTH)__ in an attempt to mitigate heap corruption problems.
+- FTH is implemented in two primary components:
+    - the detection component, or FTH server, and;
+    - the mitigation component, or FTH client.
+- the FTH client is an application compatibility shim, it intercepts the calls to the heap routines and redirects them to its own code. The FTH code implements a number of “mitigations” that attempt to allow the application to survive despite various heap-related errors.
+- the activity of the fault tolerant heap can be observed in the Event Viewer.
+
+### Virtual Address Space Layouts
+
+- three main types of data are mapped into the VAS in Windows:
+    - per-process private code and data
+    - sessionwide code and data, 
+    - systemwide code and data.
+- The information that describes the process VAS, called __page tables__.
+    - each process bas its pwn set of page tables.
+    - they are stored in kernel mode.
+- __session space__ contains information that is common to each session:
+    - consists of the processes and other system objects (such as the window station, desktops, and windows) that represent a single user’s logon session
+    - each session has a session-specific paged pool area used by Win32k.sys to allocate session-private GUI data structures. 
+    - each session has its own copy of the Windows subsystem process (Csrss.exe) and logon process (Winlogon.exe).
+- __system space__ contains global OS code and data structures visible by kernel-mode code regardless of which process is currently executing. System space consists of the following components: 
+    - __system code__ contains the OS image, HAL, and device drivers used to boot the system.
+    - __nonpaged pool__: nonpageable system memory heap.
+    - __paged pool__: pageable system memory heap.
+    - __system cache__: VAS used to map files open in the system cache.
+    - __system page table entries (PTEs)__: pool of system PTEs used to map system pages such as I/O space, kernel stacks, and memory descriptor lists.
+    - __system working set lists__: the working set list data structures that describe the three system working sets (the system cache working set, the paged pool working set, and the system PTEs working set).
+    - __system mapped views__: used to map Win32k.sys, the loadable kernel-mode part of the Windows subsystem, as well as kernel-mode graphics drivers it uses. 
+    - __hyperspace__: a special region used to map the process working set list and other per-process data that doesn’t need to be accessible in arbitrary process context. Hyperspace is also used to temporarily map physical pages into the system space. One example of this is invalidating page table entries in page tables of processes other than the current one (such as when a page is removed from the standby list).
+    - __crash dump information__: reserved to record information about the state of a system crash.
+    - __HAL__ usage System memory reserved for HAL-specific structures.
+
+#### x86 Address Space Layouts
+
+- x86 virtual address space layouts:
+    <p align="center"><img src="https://i.imgur.com/eb4oAzh.png" width="450px" height="auto"></p>
