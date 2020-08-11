@@ -377,7 +377,7 @@ subsequent chapter of this book:
     - also contains all the statistics for the processor, such as I/O statistics, cache manager statistics, DPC statistics, and memory manager statistics 
     - sometimes used to store cache-aligned, per-processor structures to optimize memory access, especially on NUMA systems
         - For example, the nonpaged and paged-pool system look-aside lists are stored in the KPRCB.
-```
+```c
 0: kd> !pcr
 KPCR for Processor 0 at fffff80002c4a000:
     Major 1 Minor 1
@@ -1102,7 +1102,7 @@ Commit limit:             2096416 (    8385664 Kb)
 ```
 
 - use _poolmon_ to monitor pool usage; or:
-```
+```c
  kd> !poolused 2
 
 *** CacheSize too low - increasing to 128 MB
@@ -1152,7 +1152,7 @@ Number of regions cached: 292
     - general pool allocations can __vary__ in size, a look-aside list contains only __fixed-sized__ blocks. 
     - although the general pools are more flexible in terms of what they can supply, look-aside lists are __faster__ because they don’t use any __spinlocks__.
 - contents and sizes of the various system look-aside lists:
-```
+```c
 1: kd> !lookaside
 
 Lookaside "nt!CcTwilightLookasideList" @ 0xfffff80002c49280  Tag(hex): 0x6b576343 "CcWk"
@@ -1233,7 +1233,7 @@ Total Paged potential for above lists              =   367832
     - randomization of the base address (or handle).
 - by using `HeapSetInformation` with _HeapEnableTerminationOnCorruption_ class, a process can opt in for an automatic termination in case if anomalies.
 - dump metadata fields from a heap block:
-```
+```c
 0:000> !heap -i 001a0000
 Heap context set to the heap 0x001a0000
 0:000> !heap -i 1e2570
@@ -1299,5 +1299,215 @@ Next block : 0x001e25a0
 
 #### x86 Address Space Layouts
 
-- x86 virtual address space layouts:
-    <p align="center"><img src="https://i.imgur.com/eb4oAzh.png" width="450px" height="auto"></p>
+- x86 virtual address space layouts: <p align="center"><img src="https://i.imgur.com/eb4oAzh.png" width="450px" height="auto"></p>
+
+#### x86 System Address Space Layout
+
+- 32-bit versions of Windows implement a __dynamic system address space__ layout by using a virtual address allocator.
+- many kernel-mode structures use dynamic address
+space allocation. These structures are therefore not necessarily __virtually contiguous__ with themselves:
+    - Nonpaged pool
+    - Special pool
+    - Paged pool
+    - System page table entries (PTEs)
+    - System mapped views
+    - File system cache
+    - File system structures (metadata)
+    - Session space
+
+#### x86 session space
+
+- for systems with __multiple__ sessions, the code and data unique to each session are mapped into system
+address space but __shared__ by the processes in that session. <p align="center"><img src="https://i.imgur.com/VmYnKuG.png" width="260px" height="auto"></p>
+- you can list the active sessions with the `!session` command as follows:
+```c
+lkd> !session
+Sessions on machine: 3
+Valid Sessions: 0 1 3
+Current Session 1
+```
+-  you can set the active session using the `!session –s` command and display the address of the session data structures and the processes in that session with the `!sprocess` command:
+```c
+0: kd> !session -s 1
+Sessions on machine: 2
+Implicit process is now fffffa80`050acb00
+.cache forcedecodeptes done
+Using session 1l
+
+0: kd> !sprocess
+Dumping Session 1
+
+_MM_SESSION_SPACE fffff88004553000
+_MMSESSION        fffff88004553b40
+PROCESS fffffa80050acb00
+    SessionId: 1  Cid: 0198    Peb: 7fffffdd000  ParentCid: 0188
+    DirBase: 93f80000  ObjectTable: fffff8a000e8ca20  HandleCount: 369.
+    Image: csrss.exe
+
+PROCESS fffffa80050e45c0
+    SessionId: 1  Cid: 01d4    Peb: 7fffffdb000  ParentCid: 0188
+    DirBase: a0806000  ObjectTable: fffff8a000ea7f90  HandleCount: 126.
+    Image: winlogon.exe
+
+PROCESS fffffa80054d2b00
+    SessionId: 1  Cid: 0558    Peb: 7fffffd3000  ParentCid: 0208
+    DirBase: 96537000  ObjectTable: fffff8a00b5a3e20  HandleCount: 220.
+    Image: taskhost.exe
+
+PROCESS fffffa8005567b00
+    SessionId: 1  Cid: 060c    Peb: 7fffffdf000  ParentCid: 036c
+    DirBase: 95260000  ObjectTable: fffff8a001f4b9c0  HandleCount:  74.
+    Image: dwm.exe
+
+PROCESS fffffa80055f2b00
+    SessionId: 1  Cid: 0658    Peb: 7fffffd8000  ParentCid: 05fc
+    DirBase: 9448e000  ObjectTable: fffff8a000f60d70  HandleCount: 756.
+    Image: explorer.exe
+
+PROCESS fffffa8005665b00
+    SessionId: 1  Cid: 0730    Peb: 7fffffda000  ParentCid: 03b8
+    DirBase: a7aea000  ObjectTable: fffff8a001fabce0  HandleCount:  85.
+    Image: taskeng.exe
+
+PROCESS fffffa800571bb00
+    SessionId: 1  Cid: 0784    Peb: 7fffffd5000  ParentCid: 0658
+    DirBase: 8f1e3000  ObjectTable: fffff8a001a4c0f0  HandleCount: 252.
+    Image: vmtoolsd.exe
+...
+```
+- to view the details of the session, dump the `MM_SESSION_SPACE` structure using the dt command, as follows:
+```c
+0: kd> dt nt!_MM_SESSION_SPACE fffff88004553000
+   +0x000 ReferenceCount   : 0n17
+   +0x004 u                : <unnamed-tag>
+   +0x008 SessionId        : 1
+   +0x00c ProcessReferenceToSession : 0n18
+   +0x010 ProcessList      : _LIST_ENTRY [ 0xfffffa80`050acce0 - 0xfffffa80`05c45c10 ]
+   +0x020 LastProcessSwappedOutTime : _LARGE_INTEGER 0x0
+   +0x028 SessionPageDirectoryIndex : 0xa1704
+   +0x030 NonPagablePages  : 0x72
+   +0x038 CommittedPages   : 0x1761
+   +0x040 PagedPoolStart   : 0xfffff900`c0000000 Void
+   +0x048 PagedPoolEnd     : 0xfffff920`bfffffff Void
+   +0x050 SessionObject    : 0xfffffa80`050a7390 Void
+   +0x058 SessionObjectHandle : 0xffffffff`800001dc Void
+   +0x060 ResidentProcessCount : 0n17
+   +0x064 SessionPoolAllocationFailures : [4] 0
+   +0x078 ImageList        : _LIST_ENTRY [ 0xfffffa80`050aa930 - 0xfffffa80`050b5480 ]
+   +0x088 LocaleId         : 0x409
+   +0x08c AttachCount      : 0
+   +0x090 AttachGate       : _KGATE
+   +0x0a8 WsListEntry      : _LIST_ENTRY [ 0xfffff800`02c7c3d0 - 0xfffff880`037bb0a8 ]
+   +0x0c0 Lookaside        : [21] _GENERAL_LOOKASIDE
+   +0xb40 Session          : _MMSESSION
+   +0xb98 PagedPoolInfo    : _MM_PAGED_POOL_INFO
+   +0xc00 Vm               : _MMSUPPORT
+   +0xc90 Wsle             : 0xfffff900`00812488 _MMWSLE
+   +0xc98 DriverUnload     : 0xfffff960`001b2d78     void  +fffff960001b2d78
+   +0xcc0 PagedPool        : _POOL_DESCRIPTOR
+   +0x1e00 PageDirectory    : _MMPTE
+   +0x1e08 SessionVaLock    : _KGUARDED_MUTEX
+   +0x1e40 DynamicVaBitMap  : _RTL_BITMAP
+   +0x1e50 DynamicVaHint    : 0xf
+   +0x1e58 SpecialPool      : _MI_SPECIAL_POOL
+   +0x1ea0 SessionPteLock   : _KGUARDED_MUTEX
+   +0x1ed8 PoolBigEntriesInUse : 0n263
+   +0x1edc PagedPoolPdeCount : 0xc
+   +0x1ee0 SpecialPoolPdeCount : 0
+   +0x1ee4 DynamicSessionPdeCount : 0x1b
+   +0x1ee8 SystemPteInfo    : _MI_SYSTEM_PTE_TYPE
+   +0x1f30 PoolTrackTableExpansion : (null) 
+   +0x1f38 PoolTrackTableExpansionSize : 0
+   +0x1f40 PoolTrackBigPages : 0xfffffa80`050ad000 Void
+   +0x1f48 PoolTrackBigPagesSize : 0x200
+   +0x1f50 IoState          : 6 ( IoSessionStateLoggedOn )
+   +0x1f54 IoStateSequence  : 7
+   +0x1f58 IoNotificationEvent : _KEVENT
+   +0x1f70 CreateTime       : 0xbdfbd3d
+   +0x1f78 CpuQuotaBlock    : (null) 
+```
+
+- to view session space memory utilization:
+```c
+0: kd> !vm 4
+Page File: \??\C:\pagefile.sys
+  Current:   4193784 Kb  Free Space:   4181660 Kb
+  Minimum:   4193784 Kb  Maximum:     12581352 Kb
+...
+
+Terminal Server Memory Usage By Session:
+
+Session ID 0 @ fffff88002dfa000:
+Paged Pool Usage:     3060 Kb
+NonPaged Usage:        316 Kb
+Commit Usage:         6484 Kb
+
+Session ID 1 @ fffff88004536000:
+Paged Pool Usage:        0 Kb
+NonPaged Usage:        324 Kb
+Commit Usage:          324 Kb
+...
+```
+
+#### System Page Table Entries
+
+- are used to dynamically map system pages such as __I/O space, kernel stacks__, and the mapping for __memory descriptor lists__.
+- to see how many system PTEs are available:
+```c
+0: kd> !sysptes
+System PTE Information
+Total System Ptes 307168
+starting PTE: c0200000
+free blocks: 32 total free: 3856 largest free block: 542
+
+Kernel Stack PTE Information
+Unable to get syspte index array - skipping bins
+starting PTE: c0200000
+free blocks: 165 total free: 1503 largest free block: 75
+0: kd> ? nt!MiSystemPteInfo
+Evaluate expression: -2100014016 = 82d45440
+0: kd> dt _MI_SYSTEM_PTE_TYPE 82d45440
+nt!_MI_SYSTEM_PTE_TYPE
++0x000 Bitmap : _RTL_BITMAP
++0x008 Flags : 3
++0x00c Hint : 0x2271f
++0x010 BasePte : 0xc0200000 _MMPTE
++0x014 FailureCount : 0x82d45468 -> 0
++0x018 Vm : 0x82d67300 _MMSUPPORT
++0x01c TotalSystemPtes : 0n7136
++0x020 TotalFreeSystemPtes : 0n4113
++0x024 CachedPteCount : 0n0
++0x028 PteFailures : 0
++0x02c SpinLock : 0
++0x02c GlobalMutex : (null)
+```
+
+- use `!sysptes 4` to show a list of allocators:
+
+```c
+lkd>!sysptes 4
+0x1ca2 System PTEs allocated to mapping locked pages
+VA MDL PageCount Caller/CallersCaller
+ecbfdee8 f0ed0958 2 netbt!DispatchIoctls+0x56a/netbt!NbtDispatchDevCtrl+0xcd
+f0a8d050 f0ed0510 1 netbt!DispatchIoctls+0x64e/netbt!NbtDispatchDevCtrl+0xcd
+ecef5000 1 20 nt!MiFindContiguousMemory+0x63
+ed447000 0 2 Ntfs!NtfsInitializeVcb+0x30e/Ntfs!NtfsInitializeDevice+0x95
+ee1ce000 0 2 Ntfs!NtfsInitializeVcb+0x30e/Ntfs!NtfsInitializeDevice+0x95
+ed9c4000 1 ca nt!MiFindContiguousMemory+0x63
+eda8e000 1 ca nt!MiFindContiguousMemory+0x63
+efb23d68 f8067888 2 mrxsmb!BowserMapUsersBuffer+0x28
+efac5af4 f8b15b98 2 ndisuio!NdisuioRead+0x54/nt!NtReadFile+0x566
+f0ac688c f848ff88 1 ndisuio!NdisuioRead+0x54/nt!NtReadFile+0x566
+efac7b7c f82fc2a8 2 ndisuio!NdisuioRead+0x54/nt!NtReadFile+0x566
+ee4d1000 1 38 nt!MiFindContiguousMemory+0x63
+efa4f000 0 2 Ntfs!NtfsInitializeVcb+0x30e/Ntfs!NtfsInitializeDevice+0x95
+efa53000 0 2 Ntfs!NtfsInitializeVcb+0x30e/Ntfs!NtfsInitializeDevice+0x95
+eea89000 0 1 TDI!DllInitialize+0x4f/nt!MiResolveImageReferences+0x4bc
+ee798000 1 20 VIDEOPRT!pVideoPortGetDeviceBase+0x1f1
+f0676000 1 10 hal!HalpGrowMapBuffers+0x134/hal!HalpAllocateAdapterEx+0x1ff
+f0b75000 1 1 cpqasm2+0x2af67/cpqasm2+0x7847
+f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
+```
+
+#### 64-Bit Address Space Layouts
+
