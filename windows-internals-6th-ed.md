@@ -1511,3 +1511,35 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 
 #### 64-Bit Address Space Layouts
 
+- theoretical 64-bit VAS is __16 exabytes__.
+- unlike on x86 systems, where the default address space is divided in two parts, the 64-bit address is divided into a number of different size regions whose components match conceptually the portions of user, system, and session space:
+
+| Region| IA64 x64|
+|-------|---------|
+| Process Address Space| 7,152 GB | 8,192 GB |
+| System PTE Space| 128 GB | 128 GB| 
+| System Cache| 1 TB | 1 TB|
+| Paged Pool| 128 GB| 128 GB|
+| Nonpaged Pool| 75% of physical memory | 75% of physical memory|
+- __large address space aware__ apps running under __Wow64__ will actually receive all __4__ GB of user address space available.
+- 64-bit applications linked __without__ `/LARGEADDRESSAWARE` are constrained to the first 2 GB of the process VAS, just like 32-bit applications.
+- The IA64 address space layout: <p align="center"><img src="https://i.imgur.com/G0ehzMF.png" height="auto"></p>
+- x64 address space layout: <p align="center"><img src="https://i.imgur.com/0QCpmWT.png" height="auto"></p>
+
+#### x64 Virtual Addressing Limitations
+
+- to simplify chip architecture and avoid unnecessary overhead, particularly in address translation, AMD’s and Intel’s current x64 processors implement only __256 TB__ of VAS.
+    - only the low-order 48 bits of a 64-bit virtual address are implemented.
+    - the high-order 16 bits (bits 48 through 63) must be set to the same value as the highest order implemented bit (bit 47), in a manner similar to sign extension in two’s complement arithmetic.
+    - an address that conforms to this rule is said to be a __canonical__ address.
+
+#### Windows x64 16-TB Limitation
+
+- Windows on x64 has a further limitation: of the 256 TB of VAS available on x64 processors, Windows at present allows only the use of a little more than __16 TB__. 
+- this is split into two 8-TB regions:
+    - a user mode, per-process region starting at 0 toward __0x000007FFFFFFFFFF__
+    - a kernel-mode, systemwide region starting at “all Fs” and working toward __0xFFFFF80000000000__ for most purposes.
+- a number of Windows mechanisms have made, and continue to make, assumptions about usable bits in addresses:
+    - __Pushlocks__, __fast references__, __Patchguard DPC contexts__, and __singly linked lists__ are common examples of data structures that use bits within a pointer for nonaddressing purposes.
+    - __singly linked lists__, combined with the lack of a CPU instruction in the original x64 CPUs required to “port” the data structure to 64-bit Windows, are responsible for this __memory addressing limit__ on Windows for x64.
+- kernel-mode data structures that do not involve SLISTs are not limited to the 8-TB address space range. System page table entries, hyperspace, and the cache working set all occupy virtual addresses below 0xFFFFF80000000000 because these structures do not use SLISTs.
