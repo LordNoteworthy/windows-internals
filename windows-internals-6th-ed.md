@@ -1543,3 +1543,71 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
     - __Pushlocks__, __fast references__, __Patchguard DPC contexts__, and __singly linked lists__ are common examples of data structures that use bits within a pointer for nonaddressing purposes.
     - __singly linked lists__, combined with the lack of a CPU instruction in the original x64 CPUs required to “port” the data structure to 64-bit Windows, are responsible for this __memory addressing limit__ on Windows for x64.
 - kernel-mode data structures that do not involve SLISTs are not limited to the 8-TB address space range. System page table entries, hyperspace, and the cache working set all occupy virtual addresses below 0xFFFFF80000000000 because these structures do not use SLISTs.
+
+#### Dynamic System Virtual Address Space Management
+
+
+### Address Translation
+
+#### x86 Virtual Address Translation
+
+- each page of VAS is associated with a system-space structure called a __page table entry (PTE)__, which contains the physical address to which the virtual one is mapped.
+- there may not even be __any PTEs__ for regions that have been marked as __reserved or committed__ but never __accessed__, because the page table itself might be allocated only when the first page fault occurs.
+- non-PAE x86 systems use a __two-level__ page table structure to translate virtual to physical addresses. A 32-bit virtual address mapped by a normal 4-KB page is interpreted as two fields: 
+    - the __virtual page number__ and the byte within the page, called the __byte offset__.
+    - the virtual page number is further divided into two subfields, called the __page directory index__ and the __page table index__:
+    <p align="center"><img src="https://i.imgur.com/gyAWAAx.png" width="400px" height="auto"></p>
+- the format of a physical address on an x86 non-PAE system is: <p align="center"><img src="https://i.imgur.com/K6xybX9.png" width="350px" height="auto"></p>
+- the byte offset does not participate in, and does not change as a result of, address translation. It is simply copied from the virtual address to the physical address.
+- translating a valid virtual address (x86 non-PAE): <p align="center"><img src="https://i.imgur.com/4RBL2h7.png" width="500px" height="auto"></p>
+- page tables can be __paged out__ or __not yet created__, and in those cases, the page table is first made resident before proceeding. If a flag in the PDE indicates that it describes a __large page__, then it simply contains the PFN of the target large page, and the rest of the virtual address is treated as the byte offset within the large page.
+- if the PTE’s valid bit is __clear__, this triggers a page fault. The OS’s memory management fault handler (pager) locates the page and tries to make it valid.
+
+#### Page Directories
+
+- on non-PAE x86 systems, each process has a __single page directory__.
+- physical address of the process page directory is stored in the `KPROCESS` block.
+    - but it is also mapped virtually at address _0xC0300000_.
+- CPU obtains the location of the page directory from a privileged CPU register called __CR3__.
+- is page aligned.
+- is composed of __page directory entries (PDEs)__, each of which is 4 bytes long.
+- page tables are created __on demand__, so the page directory for most processes points only to a small set of page tables.
+- the physical address of the currently running process’s page directory:
+```c
+lkd> !process -1 0
+PROCESS 857b3528 SessionId: 1 Cid: 0f70 Peb: 7ffdf000 ParentCid: 0818
+DirBase: 47c9b000 ObjectTable: b4c56c48 HandleCount: 226.
+Image: windbg.exe
+```
+- to see the page directory’s virtual address for the PTE of a particular virtual address:
+```c
+lkd> !pte 10004
+VA 00010004
+PDE at C0300000 PTE at C0000040
+contains 6F06B867 contains 3EF8C847
+pfn 6f06b ---DA--UWEV pfn 3ef8c ---D---UWEV
+```
+- the page tables that describe system space are __shared among all processes__.
+- and session space is shared only among processes in a session.
+- to avoid having multiple page tables describing the same virtual memory, when a process is created, the page directory entries that describe system space are __initialized to point to the existing__ system page tables. 
+- if the process is part of a session, __session space page tables__ are also __shared__ by pointing the session space page directory entries to the existing session page tables.
+
+#### Page Tables and Page Table Entries
+
+- valid PTEs have two main fields: the page frame number (PFN) of the physical page containing the data or of the physical address of a page in memory, and some flags that describe the state and protection of the page: <p align="center"><img src="https://i.imgur.com/S6WZoVe.png" width="400px" height="auto"></p>
+- PTE Status and Protection Bits:
+
+| Name of Bit | Meaning|
+|-------------|--------|
+| Accessed | Page has been accessed.|
+| Cache disabled| Disables CPU caching for that page.|
+| Copy-on-write| Page is using copy-on-write|
+| Dirty | Page has been written to.|
+| Global| Translation applies to all processes. (For example, a translation buffer flush won’t affect this PTE.)|
+|  Large page | Indicates that the PDE maps a 4-MB page (or 2 MB on PAE systems). |
+| Owner | Indicates whether user-mode code can access the page or whether the page is limited to kernel-mode access.|
+| Prototype | The PTE is a prototype PTE, which is used as a template to describe shared memory associated with section objects.|
+| Valid | Indicates whether the translation maps to a page in physical memory.|
+| Write through | Marks the page as write-through or (if the processor supports the page attribute table)|
+| write-combined | This is typically used to map video frame buffer memory.|
+| Write | Indicates to the MMU whether the page is writable.|
