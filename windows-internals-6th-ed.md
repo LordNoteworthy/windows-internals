@@ -1556,10 +1556,10 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 - non-PAE x86 systems use a __two-level__ page table structure to translate virtual to physical addresses. A 32-bit virtual address mapped by a normal 4-KB page is interpreted as two fields: 
     - the __virtual page number__ and the byte within the page, called the __byte offset__.
     - the virtual page number is further divided into two subfields, called the __page directory index__ and the __page table index__:
-    <p align="center"><img src="https://i.imgur.com/gyAWAAx.png" width="400px" height="auto"></p>
-- the format of a physical address on an x86 non-PAE system is: <p align="center"><img src="https://i.imgur.com/K6xybX9.png" width="350px" height="auto"></p>
+    <p align="center"><img src="https://i.imgur.com/gyAWAAx.png"  height="auto"></p>
+- the format of a physical address on an x86 non-PAE system is: <p align="center"><img src="https://i.imgur.com/K6xybX9.png"  height="auto"></p>
 - the byte offset does not participate in, and does not change as a result of, address translation. It is simply copied from the virtual address to the physical address.
-- translating a valid virtual address (x86 non-PAE): <p align="center"><img src="https://i.imgur.com/4RBL2h7.png" width="500px" height="auto"></p>
+- translating a valid virtual address (x86 non-PAE): <p align="center"><img src="https://i.imgur.com/4RBL2h7.png"  height="auto"></p>
 - page tables can be __paged out__ or __not yet created__, and in those cases, the page table is first made resident before proceeding. If a flag in the PDE indicates that it describes a __large page__, then it simply contains the PFN of the target large page, and the rest of the virtual address is treated as the byte offset within the large page.
 - if the PTE’s valid bit is __clear__, this triggers a page fault. The OS’s memory management fault handler (pager) locates the page and tries to make it valid.
 
@@ -1594,7 +1594,7 @@ pfn 6f06b ---DA--UWEV pfn 3ef8c ---D---UWEV
 
 #### Page Tables and Page Table Entries
 
-- valid PTEs have two main fields: the page frame number (PFN) of the physical page containing the data or of the physical address of a page in memory, and some flags that describe the state and protection of the page: <p align="center"><img src="https://i.imgur.com/S6WZoVe.png" width="400px" height="auto"></p>
+- valid PTEs have two main fields: the page frame number (PFN) of the physical page containing the data or of the physical address of a page in memory, and some flags that describe the state and protection of the page: <p align="center"><img src="https://i.imgur.com/ebUANud.png"  height="auto"></p>
 - PTE Status and Protection Bits:
 
 | Name of Bit | Meaning|
