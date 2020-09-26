@@ -814,8 +814,8 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 ### Memory Manager Components
 
 - memory manager consists of the following components:
-    - a set of executive system services for allocating, deallocating, and managing virtual memory, most of which are exposed through the Windows API or kernel-mode device driver interfaces.
-    - __translation-not-valid__ and access fault trap handler for resolving hardware-detected memory management exceptions and making virtual pages resident on behalf of a process.
+    - a set of __executive system services__ for allocating, deallocating, and managing virtual memory, most of which are exposed through the Windows API or kernel-mode device driver interfaces.
+    - __translation-not-valid__ and __access fault trap handler__ for resolving hardware-detected memory management exceptions and making virtual pages resident on behalf of a process.
     - Six __key top-level routines__, each running in one of six different kernel-mode threads in the System process:
         - __balance set manager__ (`KeBalanceSetManager`, priority 16). It calls an inner routine, the __working set manager__ (`MmWorkingSetManager`), once per second as well as when free memory falls below a certain threshold. The working set manager drives the overall memory management policies, such as __working set trimming, aging, and modified page writing__. 
         - __process/stack swapper__ (`KeSwapProcessOrStack`, priority 23) performs both process and kernel thread stack inswapping and outswapping. The balance set manager and the thread-scheduling code in the kernel awaken this thread when an inswap or outswap operation needs to take place.
@@ -896,7 +896,6 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 #### Large and Small Pages
 
 - page size:
-
     | Architecture | Small Page  Size| Large Page Size | Small Pages per Large Page|
     |--------------|-----------------|-----------------|---------------------------|
     |x86 | 4 KB|  4 MB (2 MB if PAE enabled) |1,024 (512 with PAE) |
@@ -904,14 +903,14 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
     |IA64 | 8 KB | 16 MB  |2,048 |
 - primary advantage of large pages is __speed of address translation__ for references to other data within the large page.
 - first reference to any byte within a large page will cause the hardware’s __translation look-aside buffer TLB__  to have in its cache the information necessary to translate references to any other byte within the large page.
-- To take advantage of large pages on systems with more than 2 GB of RAM, Windows maps with large pages:
-    - the core OS images (`Ntoskrnl.exe` and `Hal.dll`) 
-    - as well as core OS data (such as the initial part of nonpaged pool and the data structures that describe the state of each physical memory page).
-    - also automatically maps I/O space requests (calls by device drivers to `MmMapIoSpace`) with large pages if the request is of satisfactory large page length and alignment.
+- to take advantage of large pages on systems with more than 2 GB of RAM, Windows maps with large pages:
+    - the __core OS images__ (`Ntoskrnl.exe` and `Hal.dll`) 
+    - as well as __core OS data__ (such as the initial part of __nonpaged pool__ and the data structures that describe the state of each physical memory page).
+    - also automatically maps __I/O space requests__ (calls by device drivers to `MmMapIoSpace`) with large pages if the request is of satisfactory large page length and alignment.
     - user mode apps can use `MEM_LARGE_PAGE` during mem alloc.
     - drivers can set _LargePageDrivers_.
 - few notes regarding large pages:
-    - allocating large pages could fail as freeing physical memory does become fragmented as the system runs.
+    - allocating large pages could fail as freeing physical memory does become __fragmented__ as the system runs.
     - tt is not possible to specify anything but __read/write__ access to large pages. 
     - the memory is also always __nonpageable__, because the page file system does not support large page.
     - if a large page contains, for example, both __read-only code__ and __read/write data__, the page must be marked as __read/write__, which means that the code will be writable. This means that device drivers or other kernel-mode code could, as a result of a bug, modify what is supposed to be __read-only__ OS or driver code without causing a memory access violation.
@@ -965,7 +964,7 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 #### Protecting Memory
 
 - Windows provides memory protection in four primary ways.
-    1. all systemwide data structures and memory pools used by kernel-mode system components can be accessed only while in kernel mode.
+    1. all __systemwide data structures__ and __memory pools used by kernel-mode__ system components can be accessed only while in __kernel__ mode.
         - user-mode threads can’t access these pages
         - if they attempt to do so, the hardware generates a fault, which in turn the memory manager reports to the thread as an access violation.
     2. each process has a separate, __private address space__, protected from being accessed by any thread belonging to another process. 
@@ -1278,8 +1277,8 @@ Next block : 0x001e25a0
     - per-process private code and data
     - sessionwide code and data, 
     - systemwide code and data.
-- The information that describes the process VAS, called __page tables__.
-    - each process bas its pwn set of page tables.
+- the information that describes the process VAS, called __page tables__.
+    - each process bas its own set of page tables.
     - they are stored in kernel mode.
 - __session space__ contains information that is common to each session:
     - consists of the processes and other system objects (such as the window station, desktops, and windows) that represent a single user’s logon session
@@ -1304,8 +1303,7 @@ Next block : 0x001e25a0
 #### x86 System Address Space Layout
 
 - 32-bit versions of Windows implement a __dynamic system address space__ layout by using a virtual address allocator.
-- many kernel-mode structures use dynamic address
-space allocation. These structures are therefore not necessarily __virtually contiguous__ with themselves:
+- many kernel-mode structures use dynamic address space allocation. These structures are therefore not necessarily __virtually contiguous__ with themselves:
     - Nonpaged pool
     - Special pool
     - Paged pool
@@ -1545,6 +1543,47 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 - kernel-mode data structures that do not involve SLISTs are not limited to the 8-TB address space range. System page table entries, hyperspace, and the cache working set all occupy virtual addresses below 0xFFFFF80000000000 because these structures do not use SLISTs.
 
 #### Dynamic System Virtual Address Space Management
+#### System Virtual Address Space Quotas
+#### User Address Space Layout
+
+- just as address space in the kernel is dynamic, the user address space is also built dynamically:
+    - addresses of the thread stacks, process heaps, and loaded images are dynamically computed (if its images support it) through a mechanism known as __Address Space Layout Randomization (ASLR)__.
+- at the OS level, user address space is divided into a few well-defined regions of memory:
+    - the __executable and DLLs__ themselves are present as __memory mapped__ image files,
+    - followed by __the heap(s)__ of the process and the __stack(s)__ of its thread(s).
+    - apart from these regions (and some reserved system structures such as the __TEBs__ and __PEB__), all other memory allocations are run-time dependent and generated thanks to ASLR + DEP. <p align="center"><img src="https://i.imgur.com/BqhCCb0.png" height="auto"></p>
+
+#### Image Randomization
+
+- for executables, the load offset is calculated by computing a delta value each time an executable is loaded.
+    - this value is a pseudo-random 8-bit number from __0x10000 to 0xFE0000__, calculated by taking the current processor’s time stamp counter (TSC), shifting it by four places, and then performing a division modulo 254 and adding 1 (so it can never load at the address in the PE header). 
+    - this number is then multiplied by the allocation granularity of 64 KB.
+    - this delta is then __added__ to the executable’s __preferred load address__, creating one of 256 possible locations within 16 MB of the image address in the PE header.
+- for DLLs, computing the load offset begins with a __per-boot__, __systemwide__ value called the __image bias__, which is computed by `MiInitializeRelocations` and stored in `MiImageBias`. 
+    - this value corresponds to the TSC of the current CPU when this function was called during the boot cycle, shifted and masked into an 8-bit value, which provides 256 possible values.
+    - this value is computed only __once per boot__ and __shared__ across the system to allow DLLs to remain shared in physical memory and __relocated only once__. 
+
+#### Stack Randomization
+
+- the next step in ASLR is to randomize the location of the initial thread’s stack (and, subsequently, of each new thread).
+- enabled unless the flag `StackRandomizationDisabled` was enabled for the process.
+- consists of first selecting one of 32 possible stack locations separated by either __64 KB__ or __256 KB__.
+- this base address is selected by finding the first appropriate free memory region and then choosing the *x*th available region, where *x* is once again generated based on the current processor’s TSC shifted and masked into a 5-bit value (which allows for 32 possible locations).
+- once this base address has been selected, a new TSC-derived value is calculated, this one 9 bits long. The value is then multiplied by 4 to maintain alignment, which means it can be as large as 2,048 bytes (half a page).
+- tt is __added__ to the __base address__ to obtain the __final stack base__.
+
+#### Heap Randomization
+
+- ASLR randomizes the location of the initial process heap (and subsequent heaps) when created in user mode.
+- the `RtlCreateHeap` function uses another pseudo-random, TSC-derived value to determine the base address of the heap.
+- this value, 5 bits this time, is multiplied by __64 KB__ to generate the final base address, starting at 0, giving a possible range of __0x00000000 to 0x001F0000__ for the initial heap.
+- he range __before the heap base address__ is manually deallocated in an attempt to force an access violation if an attack is doing a brute-force sweep of the entire possible heap address range.
+
+#### ASLR in Kernel Address Space
+
+- ASLR is also active in kernel address space.
+- there are __64__ possible load addresses for 32-bit drivers and __256__ for 64-bit drivers.
+- relocating user-space images requires a significant amount of work area in kernel space, but if kernel space is tight, ASLR can use the user-mode address space of the System process for this work area.
 
 
 ### Address Translation
