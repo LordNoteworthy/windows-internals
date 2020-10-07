@@ -92,3 +92,77 @@
 
 #### Method Declaration
 
+```v
+.method public static void check( ) cil managed {
+    .entrypoint
+    .locals init (int32 Retval)
+...
+}
+```
+- the first line defines a metadata item named __Method Definition__
+(or __MethodDef__).
+- keywords public and static define the flags of MethodDef and mean the same as the similarly named flags of __FieldDef__.
+- `void` defines the return type of the method.
+- the keywords `cil` and `managed` define so-called __implementation flags__ of the MethodDef and indicate that the method body is represented in IL.
+    -  a method represented in native code rather than in IL would carry the implementation flags native __unmanaged__.
+- `.entrypoint` identifies the current method as the entry point of the application (the assembly).
+- `.locals init (int32 Retval)` defines the single local variable of the current method.
+    - `init` means the local variables will be zero-initialized at runtime.
+
+```v
+AskForNumber:
+    ldstr "Enter a number"
+    call void [mscorlib]System.Console::WriteLine(string)
+```
+
+- `AskForNumber`is a label; the IL disassembler marks every instruction with a label on the same line as the instruction.
+- labels are not compiled into metadata or IL; rather, they are used solely for the identification of certain offsets within IL code at compile time.
+- an important note: __IL is strictly a stack-based language__. Every instruction takes something (or nothing) from the top of the stack and puts something (or nothing) onto the stack.
+- No IL instruction can address a local variable or a method parameter directly, except the instructions of __load__ and __store__ groups, which, respectively, put the value or the address of a variable or a parameter onto the stack or take the value from the stack and put it into a variable or a parameter.
+- elements of the IL stack are not bytes or words, but __slots__.
+- `ldstr "Enter a number"` is an instruction that creates a string object from the specified string constant and loads a reference to this object onto the stack. The string constant in this case is stored in the metadata.
+- `call void [mscorlib]System.Console::WriteLine(string)` is an instruction that calls a console output method from the .NET Framework class library. The string is taken from the stack as the method argument, and nothing is put back, because the method returns void.
+- the parameter of this instruction is a metadata item named __Member Reference__ (or __MemberRef__). It refers to the static method named `WriteLine`, which has the signature `void(string)`; the method is a member of class System.
+- the MemberRefs are members of TypeRefs, just as FieldDefs and MethodDefs are TypeDef members. However, there are __no separate__ FieldRefs and MethodRefs; the MemberRefs cover references to both fields and methods.
+
+```v
+call string [mscorlib]System.Console::ReadLine()
+ldsflda valuetype CharArray8 Format
+ldsflda int32 Odd.or.Even::val
+call vararg int32 sscanf(string,int8*,...,int32*)
+```
+- `call string [mscorlib]System.Console::ReadLine()` calls a console input method from the .NET Framework class library. Nothing is taken from the stack, and a string is put onto the stack as a result of this call.
+- `ldsflda valuetype CharArray8 Format` __loads the address of the static field__ Format of type valuetype CharArray8.
+    - IL has separate instructions for loading instance and static fields (`ldfld` and `ldsfld`) or their addresses (`ldflda` and `ldsflda`). Also note that the “address” loaded onto the stack is not exactly an address (or a C/C++ pointer) but rather a reference to the item (a field in this sample).
+- `ldsflda int32 Odd.or.Even::val` loads the address of the static field val, which is a
+member of the class `Odd.or.Even`, of type int32.
+- in IL, all references must be __fully qualified__.
+- `call vararg int32 sscanf(string,int8*,...,int32*)` calls the global static method `sscanf`. This method takes three items currently on the stack (the string returned from `System.Console::ReadLine`, the reference to the global field Format, and the reference to the field Odd.or.Even::val) and puts the result of type int32 onto the stack.
+
+```v
+stloc Retval
+ldloc Retval
+brfalse Error
+```
+
+- `stloc Retval` takes the result of the call to sscanf from the stack and stores it in the local variable Retval.
+- you need to save this value in a local variable because you will need it later. `ldloc Retval` copies the value of Retval back onto the stack. You need to check this value, which was taken off the stack by the stloc instruction.
+- `brfalse Error` takes an item from the stack, and if it is 0, it branches (switches the computation flow) to the
+label Error.
+
+```v
+ldsfld int32 Odd.or.Even::val
+ldc.i4 1
+and
+brfalse ItsEven
+ldstr "odd!"
+br PrintAndReturn
+```
+
+- `ldsfld int32 Odd.or.Even::val` loads the value of the static field Odd.or.Even::val onto the stack.
+- `ldc.i4 1` is an instruction that loads the constant 1 of type int32 onto the stack.
+- `and` takes two items from the stack (the value of the field val and the integer constant 1), performs a bitwise AND operation, and puts the result onto the stack.
+- `brfalse ItsEven` takes an item from the stack (the result of the bitwise AND operation), and if it is 0, it branches to the label ItsEven.
+- `ldstr "odd!"` is an instruction that loads the string odd! onto the stack.
+- `br PrintAndReturn` is an instruction that does not touch the stack and branches unconditionally to the label `PrintAndReturn`.
+- `ret` which is fairly obvious: it returns whatever is on the stack.
