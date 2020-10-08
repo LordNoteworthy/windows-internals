@@ -1,3 +1,7 @@
+# Notes from .NET IL Assembler by Serge Lidin 
+
+These notes are directly taken from the book mentionned above. They represent to me a summary of the __MOST important__ things I wanted to remember while I was reading this book. When time passes, I always need a quick reference to refresh my memory of what I learned, especially when I didn't have a chance to put into practise the learned knowledge or when my day to day job does not use any of it.
+
 # Chapter 1 - simple sample
 
 - ILAsm: __IL assembly language__.
@@ -32,11 +36,11 @@
 
 - You can precompile a managed executable from IL to the native code using the __NGEN utility__. 
 
-### Simple Sample: The Code
+## Simple Sample: The Code
 
 - see the source file `Simple.il` on the `sources/il/` folder.
 
-#### Program Header
+### Program Header
 
 - this is the program header of the OddOrEven application:
 ```v
@@ -50,7 +54,7 @@
 - `.assembly OddOrEven { }`: defines a metadata item named __Assembly__, which, to no one’s surprise, identifies the current application (assembly).
 - `.module OddOrEven.exe` defines a metadata item named __Module__, identifying the current module. Each module, prime or otherwise, carries this identification in its metadata.
 
-#### Class Declaration
+### Class Declaration
 
 - this is the class declaration of the OddOrEven application:
 
@@ -75,7 +79,7 @@
     - each class defined __outside__ the current module is addressed by TypeRef. 
 - in ILAsm, you can declare a TypeDef with some of its attributes and members, close the TypeDef’s scope, and then reopen the same TypeDef later in the source code to declare more of its attributes and members. This technique is referred to as __class amendment__.
 
-#### Field Declaration
+### Field Declaration
 
 - `.field public static int32 val` defines a metadata item named __Field Definition__ (or __FieldDef__). The keywords __public__ and __static__ define the flags of the FieldDef. 
     - the keyword public identifies the accessibility of this field and means the field can be accessed by any member for whom this __class is visible__.
@@ -90,7 +94,7 @@
 - the keyword __static__ means the field is static; that is, it is __shared by all instances__ of class `Odd.or.Even`. 
     - if you did not designate the field as static, it would be an __instance field__, individual to a specific instance of the class.
 
-#### Method Declaration
+### Method Declaration
 
 ```v
 .method public static void check( ) cil managed {
@@ -166,3 +170,64 @@ br PrintAndReturn
 - `ldstr "odd!"` is an instruction that loads the string odd! onto the stack.
 - `br PrintAndReturn` is an instruction that does not touch the stack and branches unconditionally to the label `PrintAndReturn`.
 - `ret` which is fairly obvious: it returns whatever is on the stack.
+
+### Global Items
+
+- these are the global items of the _OddOrEven_ application:
+```v
+{
+    ...
+} // End of namespace
+.field public static valuetype CharArray8 Format at FormatData
+```
+- `.field public static valuetype CharArray8 Format at FormatData` declares a static field named `Format` of type _valuetype CharArray8_. As you might remember, you used a reference to this field in the method `Odd.or.Even::check`.
+- this field differs from, for example, the field `Odd.or.Even::val` because it is declared outside any class scope and hence does not belong to any class. It is thus a __global item__.
+- the metadata of every module contains one special TypeDef named `<Module>` that contains all global items not belonging to any class.
+- all the classes declared __within a module__ have full access to the global items of this module, including the __private ones__ !
+
+### Mapped Fields
+
+- this is the mapped field of the _OddOrEven_ application:
+```v
+.field public static valuetype CharArray8 Format at FormatData
+```
+- the declaration of the field Format contains one more new item, the clause `at FormatData`.
+- this clause indicates the `Format` field is located in the __data section__ of the module and its location is identified by the data label `FormatData`.
+- compilers widely use this technique of mapping fields to data for __field initialization__.
+
+### Data Declaration
+
+- this is the data declaration of the _OddOrEven_ application:
+```v
+.data FormatData = bytearray(25 64 00 00 00 00 00 00)
+```
+- it defines a data segment labeled `FormatData`. This segment is 8 bytes long and has ASCII codes of the characters % (0x25) and d (0x64) in the first 2 bytes and zeros
+in the remaining 6 bytes.
+- the segment is described as `bytearray`, which is the most ubiquitous way to describe data in ILAsm. The numbers within the parentheses represent the hexadecimal values of the bytes, without the 0x prefix. The byte values should be separated by spaces.
+
+### Value Type As Placeholder
+
+```v
+.class public explicit CharArray8   
+    extends [mscorlib]System.ValueType { .size 8 }
+```
+
+- it declares a __value type__ that has no members but has an explicitly specified size, 8 bytes. Declaring such a value type is a common way to declare "just a piece of memory".
+
+### Calling Unmanaged Code
+
+```v
+.method public static pinvokeimpl("msvcrt.dll" cdecl)
+    vararg int32 sscanf(string,int8*) cil managed preservesig { }
+```
+- it declares an __unmanaged method__, to be called from __managed code__. 
+- the attribute `pinvokeimpl("msvcrt.dll" cdecl)` indicates that this is an unmanaged method, called using the mechanism known as __platform invocation or P/Invoke__. This attribute also indicates that this method resides in the unmanaged DLL `Msvcrt.dll` and has the calling convention `cdecl`.
+- __platform invocation__ is the mechanism the common language runtime provides to facilitate the calls from the managed code to unmanaged functions. Behind the scenes, the runtime constructs the so-called _stub_, or _thunk_, which allows the addressing of the unmanaged function and conversion of managed argument types to the appropriate unmanaged types and back.
+- the implementation flag __preservesig__ indicates that the return of the method is to be preserved. In CLR versions 1.0, 1.1 and 2.0, this implementation flag was not needed in case of a P/Invoke method, because only COM methods underwent signature change. However, in version 4.0 the signature change was for some reason extended to P/Invoke methods as well.
+
+# Chapter 4: The Structure of a Managed Executable File
+
+- the file format of a managed module is an extension of the standard Microsoft Windows Portable Executable and Common Object File Format (__PE/COFF__). Thus, formally, any managed module is a proper PE/COFF file, with additional features that identify it as a managed executable file.
+<p align="center"><img src="https://i.imgur.com/SfPRKBq.png" width="350px" height="auto"></p>
+
+## PE/COFF Headers
