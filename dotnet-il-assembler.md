@@ -231,3 +231,39 @@ in the remaining 6 bytes.
 <p align="center"><img src="https://i.imgur.com/SfPRKBq.png" width="350px" height="auto"></p>
 
 ## PE/COFF Headers
+
+the IL assembler generates the following sections in a PE file:
+- `.text`: A read-only section containing the common language runtime header, the metadata, the IL code, managed exception handling information, and managed resources
+- `.sdata`: A read/write section containing data
+- `.reloc`: A read-only section containing relocations
+- `.rsrc`: A read-only section containing unmanaged resources
+- `.tls`: A read/write section containing thread local storage data.
+
+## Common Language Runtime Header
+
+- skipped the COM header and flags definitions.
+
+### EntryPointToken
+
+-  contains a token (metadata identifier) of either a method definition (MethodDef) or a file reference (File).
+- a __MethodDef token__ identifies a method defined in the module (a managed PE file) as the entry point method.
+- a __File token__ is used in one case only: in the runtime header of the prime module of a multimodule assembly, when the entry point method is defined in another module (identified by the file reference) of this assembly. In this case, the module identified by the file reference must contain the respective MethodDef token in the EntryPointToken field of its runtime header.
+- The method referred to by the EntryPointToken/EntryPointRVA field of the common language runtime header has nothing to do with the function to which the _AddressOfEntryPoint_ field of the PE header points. AddressOfEntryPoint always points to the __runtime invocation stub__, which is invisible to the runtime, is not reflected
+in metadata and hence cannot have a token.
+
+### VTableFixups Field
+
+- is a data directory containing the RVA and the size of the image file’s v-table fixup table.
+- managed and unmanaged methods use different data formats, so when a __managed method must be called from unmanaged code__, the common language runtime creates a marshaling thunk for it, which performs the data conversions, and the address of this thunk is placed in the respective address table. 
+- if the managed method is called from the unmanaged code embedded in the current managed PE file, the thunk address goes to the file’s v-table.
+
+### StrongNameSignature Field
+
+- contains the RVA and size of the __strong name hash__, which is used by the runtime to establish the authenticity of the image file.
+- after the image file has been created, it is hashed using the private encryption keys provided by the producer of the image file, and the resulting hash blob is written into the space allocated inside the image file.
+- if even a single byte in the image file is subsequently modified, the authenticity check fails, and the image file cannot be loaded.
+
+### Relocation Section
+
+- the .reloc section of the image file contains the Fixup table, which holds entries for all fixups in the image file. The Fixup table consists of blocks of fixups, each block holding the fixups for a 4KB page. Blocks are 4-byte aligned.
+- the only fixup type emitted by the existing managed compilers in 32-bit executables is `IMAGE_REL_BASED_HIGHLOW`. In 64-bit executables, it is `IMAGE_REL_BASED_DIR64`.
