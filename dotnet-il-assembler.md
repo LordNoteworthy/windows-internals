@@ -26,13 +26,13 @@ These notes are directly taken from the book mentionned above. They represent to
 - managed .NET applications are called __assemblies__.
 - the managed executables are referred to as __modules__. You can create single-module assemblies and multimodule assemblies. 
 - as illustrated below, each assembly contains one __prime module__, which carries the assembly __identity information in its metadata__.
-<p align="center"><img src="https://i.imgur.com/DMoUMCZ.png" width="400px" height="auto"></p>
+<p align="center"><img src="https://i.imgur.com/DMoUMCZ.png" width="500px" height="auto"></p>
 
 - the two principal components of a managed executable are the __metadata__ and the __IL code__.
 - the two major CLR subsystems dealing with each component are, respectively, the __loader__ and the __just-in-time (JIT)__ compiler.
 - the loader reads the metadata and creates in memory an __internal representation and layout of the classes and their members__. It performs this task on demand, meaning a class is loaded and laid out only when it is referenced. Classes that are never referenced are never loaded. When loading a class, the loader runs a series of consistency checks of the related metadata. 
 - the JIT compiler, relying on the results of the loader’s activity, __compiles the methods encoded in IL into the native code__ of the underlying platform. Because the runtime is not an interpreter, it does not execute the IL code. Instead, the IL code is compiled in memory into the native code, and the native code is executed. The JIT compilation is also done on demand, meaning a method is compiled only when it is called. The compiled methods stay cached in memory.
-<p align="center"><img src="https://i.imgur.com/u513Av8.png" width="400px" height="auto"></p>
+<p align="center"><img src="https://i.imgur.com/u513Av8.png" width="500px" height="auto"></p>
 
 - You can precompile a managed executable from IL to the native code using the __NGEN utility__. 
 
@@ -355,3 +355,41 @@ internal buffers.
     - The strong name signing procedure is applied to the file by invoking the strong name utility (sn.exe).
 
 # Metadata Tables Organization
+
+## What Is Metadata?
+
+- in the context of the CLR, metadata means a __system of descriptors of all items__ that are declared or referenced in a module. 
+- the CLR programming model is inherently object oriented, so the items represented in metadata are __classes and their members__, with their accompanying __attributes, properties, and relationships__.
+- metadata is an integral part of a managed module, which means each managed module always carries a complete, high-level, formal description of its logical structure.
+- structurally, metadata is a __normalized relational database__. This means that metadata is organized as a set of __cross-referencing__ rectangular tables—as opposed to, for example, a hierarchical database that has a tree structure.
+- each column of a metadata table contains either data or a reference to a row of another table. Metadata does not contain any duplicate data fields; each category of data resides in only one table of the metadata database. If another table needs to employ the same data, it references the table that holds the data.
+- an example of optimized metadata:<p align="center"><img src="https://i.imgur.com/HAGIZWS.png" width="400px" height="auto"></p>
+- it is possible, however (perhaps as a result of sloppy metadata emission or of incremental compilation), to have the child tables interleaved with regard to their owner classes. In such a case, additional intermediate metadata tables are engaged, providing noninterleaved lookup tables sorted by the owner class. Instead of referencing the method records, class records reference the records of an __intermediate table (a pointer table)__, and those records in turn reference the method records, as diagrammed below. Metadata that uses such intermediate lookup tables is referred to as __unoptimized or uncompressed__: <p align="center"><img src="https://i.imgur.com/HSV8hjI.png" width="400px" height="auto"></p>
+
+## Heaps and Tables
+
+- logically, metadata is represented as a set of __named streams++, with each stream representing a category of metadata.
+- rhese streams are divided into two types: __metadata heaps__ and __metadata tables__.
+
+### Heaps
+
+- metadata heap is a storage of trivial structure, holding a __contiguous sequence of items__.
+- heaps are used in metadata to store __strings and binary objects__.
+- there are three kinds of metadata heaps:
+    - __String heap__: This kind of heap contains __zero-terminated character strings__, encoded in UTF-8.
+    - __GUID heap__: This kind of heap contains __16-byte binary objects__, immediately following each other. The size of the binary objects is fixed.
+    - __Blob heap__: This kind of heap contains binary objects of __arbitrary__ size.
+
+### General Metadata Header
+
+- the general metadata header consists of a __storage signature__ and a __storage header__.
+- six named streams can be present in the metadata:
+    - __#Strings__: A string heap containing the names of metadata items (class names, method names, field names, and so on). The stream does not contain literal constants defined or referenced in the methods of the module.
+    - __#Blob__: A blob heap containing internal metadata binary objects, such as default values, signatures, and so on.
+    - __#GUID__: A GUID heap containing all sorts of globally unique identifiers.
+    -  __#US__: A blob heap containing user-defined strings. This stream contains string constants defined in the user code.
+    - __#~__: A compressed (optimized) metadata stream. This stream contains an optimized system of metadata tables.
+    - __#-__: An uncompressed (unoptimized) metadata stream. This stream contains an unoptimized system of metadata tables, which includes at least one intermediate lookup table (pointer table).
+- the figure on the left side illustrates the general structure of metadata, and in the one in the right side, you can see the way streams are referenced by other streams as well as by external “consumers” such as metadata APIs and the IL code.
+https://i.imgur.com/.png <p align="center"><img src="https://i.imgur.com/fHmklf8.png" width="700px" height="auto"></p>
+- 
