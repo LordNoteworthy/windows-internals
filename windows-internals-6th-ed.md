@@ -803,6 +803,76 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 - although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
 
 
+
+
+
+
+
+## Chapter 8 Security
+
+### Security System Components
+
+These are the core components and databases that implement Windows security:
+- __Security reference monitor (SRM)__:
+    - defines the access token data structure to represent a security context,;
+    - perform security access checks on objects;
+    - manipulate privileges (user rights), and generating any resulting security audit messages.
+- __Local Security Authority subsystem (LSASS)__:
+    - local system security policy (such as which users are allowed to log on to the machine, password policies, privileges granted to users and groups, and the system security auditing settings)
+    - user authentication
+    - sends security audit messages to the Event Log The Local Security Authority service (Lsasrv)
+    - Lsasrv.dll is a library that LSASS loads, implements most of this functionality
+- __LSASS policy database__:
+    - contains the local system security policy settings.
+    - stored in the registry in an ACL-protected area under `HKLM\SECURITY`. 
+    - contains information like:
+        - what domains are entrusted to authenticate logon attempts
+        - who has permission to access the system and how (interactive, network, and service logons),
+        - who is assigned which privileges,
+        - what kind of security auditing is to be performed
+- __Security Accounts Manager (SAM)__:
+    - a service responsible for managing the database that contains the user names and groups defined on the local machine.
+    - The SAM service is as _Samsrv.dll_, is loaded into the LSASS process.
+- __SAM database__:
+    - contains the defined local users and groups, along with their passwords and other attributes.
+    - is stored in the registry under `HKLM\SAM`.
+- __Active Directory__:
+    - ia directory service that contains a database that stores information about objects in a domain.
+    - A domain is a collection of computers and their associated security groups that are managed as a single entity.
+    - it stores information about the objects in the domain, including users, groups, and computers.
+    - The AD server, implemented as _Ntdsa.dll_, runs in the LSASS process.
+- __Authentication packages__: 
+    - include DLLs that run both in the context of the LSASS process and client processes, and implement Windows authentication policy.
+    - An authentication DLL is responsible for authenticating a user, by checking whether a given user name and password match.
+- __Interactive logon manager (Winlogon)__:
+    - user-mode process _Winlogon.exe_ that is responsible for responding to the SAS and for managing interactive logon sessions.
+- __Logon user interface (LogonUI)__:
+    - user-mode process `LogonUI.exe` that presents users with the user interface they can use to authenticate themselves on the system LogonUI uses credential providers to query user credentials through various methods
+- __Credential providers (CPs)__:
+    -  In-process COM objects that run in the LogonUI process and used to obtain a user’s name and password, smartcard PIN, or biometric data (such as a fingerprint). 
+    - The standard CPs are implemented in _authui.dll_ and  _SmartcardCredentialProvider.dll_.
+- __Network logon service (Netlogon)__:
+    - A Windows service _Netlogon.dll_ that sets up the secure channel to a domain controller, over which security requests—such as an interactive logon or LAN Manager and NT LAN Manager (v1 and v2) authentication validation—are sent.
+    - also used for AD logons
+- __Kernel Security Device Driver (KSecDD)__:
+    - `Ksecdd.sys` is a kernel-mode library of functions that implement the ALPC interfaces that other kernel mode security components, including the Encrypting File System (EFS), use to communicate with LSASS in user mode.
+- __AppLocker__:
+    - a mechanism that allows administrators to specify which executable files, DLLs, and scripts can be used by specified users and groups.
+    - consists of a driver (_AppId.sys_) and a service (_AppIdSvc.dll_) running in a SvcHost process.
+<p align="center"><img src="./assets/windows-security-components.png" width="600px" height="auto"></p>
+
+### Protecting Objects
+
+
+
+
+
+
+
+
+
+
+
 ## Chapter 10 Memory Management
 
 ## Introduction to the Memory Manager
