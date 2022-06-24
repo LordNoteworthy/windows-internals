@@ -320,8 +320,7 @@ sections of a managed image file and are accessed by different sets of APIs.
 
 ## Summary
 
-- steps the IL assembler takes to create a managed PE file:
-
+- Steps the IL assembler takes to create a managed PE file:
 - __Phase 1: Initialization__
     - Internal buffers are initialized.
     - The empty template of a PE file is created in memory, including an MS-DOS header and stub, a PE signature, a COFF header, and a PE header.
@@ -362,18 +361,18 @@ internal buffers.
 - the CLR programming model is inherently object oriented, so the items represented in metadata are __classes and their members__, with their accompanying __attributes, properties, and relationships__.
 - metadata is an integral part of a managed module, which means each managed module always carries a complete, high-level, formal description of its logical structure.
 - structurally, metadata is a __normalized relational database__. This means that metadata is organized as a set of __cross-referencing__ rectangular tables—as opposed to, for example, a hierarchical database that has a tree structure.
-- each column of a metadata table contains either data or a reference to a row of another table. Metadata does not contain any duplicate data fields; each category of data resides in only one table of the metadata database. If another table needs to employ the same data, it references the table that holds the data.
+- each column of a metadata table contains __either data__ or a __reference__ to a row of another table. Metadata does not contain any duplicate data fields; each category of data resides in only one table of the metadata database. If another table needs to employ the same data, it references the table that holds the data.
 - an example of optimized metadata:<p align="center"><img src="https://i.imgur.com/HAGIZWS.png" width="400px" height="auto"></p>
 - it is possible, however (perhaps as a result of sloppy metadata emission or of incremental compilation), to have the child tables interleaved with regard to their owner classes. In such a case, additional intermediate metadata tables are engaged, providing noninterleaved lookup tables sorted by the owner class. Instead of referencing the method records, class records reference the records of an __intermediate table (a pointer table)__, and those records in turn reference the method records, as diagrammed below. Metadata that uses such intermediate lookup tables is referred to as __unoptimized or uncompressed__: <p align="center"><img src="https://i.imgur.com/HSV8hjI.png" width="400px" height="auto"></p>
 
 ## Heaps and Tables
 
-- logically, metadata is represented as a set of __named streams++, with each stream representing a category of metadata.
-- rhese streams are divided into two types: __metadata heaps__ and __metadata tables__.
+- logically, metadata is represented as a set of __named streams__, with each stream representing a category of metadata.
+- these streams are divided into two types: __metadata heaps__ and __metadata tables__.
 
 ### Heaps
 
-- metadata heap is a storage of trivial structure, holding a __contiguous sequence of items__.
+- metadata heap is a storage of __trivial structure__, holding a __contiguous sequence of items__.
 - heaps are used in metadata to store __strings and binary objects__.
 - there are three kinds of metadata heaps:
     - __String heap__: This kind of heap contains __zero-terminated character strings__, encoded in UTF-8.
@@ -390,6 +389,6 @@ internal buffers.
     -  __#US__: A blob heap containing user-defined strings. This stream contains string constants defined in the user code.
     - __#~__: A compressed (optimized) metadata stream. This stream contains an optimized system of metadata tables.
     - __#-__: An uncompressed (unoptimized) metadata stream. This stream contains an unoptimized system of metadata tables, which includes at least one intermediate lookup table (pointer table).
-- the figure on the left side illustrates the general structure of metadata, and in the one in the right side, you can see the way streams are referenced by other streams as well as by external “consumers” such as metadata APIs and the IL code.
-https://i.imgur.com/.png <p align="center"><img src="https://i.imgur.com/fHmklf8.png" width="700px" height="auto"></p>
-- 
+- the figure on the __left__ side illustrates the _general structure of metadata_, and in the one in the __right__ side, you can see the way _streams are referenced by other streams_ as well as by external “consumers” such as metadata APIs and the IL code: <p align="center"><img src="https://i.imgur.com/fHmklf8.png" width="700px" height="auto"></p>
+
+### Metadata Table Streams
