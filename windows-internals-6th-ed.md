@@ -28,7 +28,7 @@
     - A unique identifier called a thread ID (part of an internal structure called a client ID—process IDs and thread IDs are generated out of the same namespace, so they never overlap)
     - Threads sometimes have their own security context, or token, that is often used by multithreaded server applications that impersonate the security context of the clients that they serve.
 - The volatile registers, stacks, and private storage area are called the thread’s context (Use `GetThreadContext()` or `Wow64GetThreadContext()` to get the context.)
-- Switching execution between threads involves the kernel scheduler and it can be an expensive operation, to reduce this cost, Windows implemets two mechanims: 
+- Switching execution between threads involves the kernel scheduler and it can be an expensive operation, to reduce this cost, Windows implemets two mechanims:
     - **Fibers**:
         - allow an application to schedule its own “threads” of execution rather than rely on the priority-based scheduling mechanism built into Windows.
         - They are more lightweight.
@@ -51,7 +51,7 @@
 - The **virtual address descriptors (VADs)** are data structures that the memory manager uses to keep track of the virtual addresses the process is using.
 - By default, threads don’t have their own access token, but they can obtain one, thus allowing individual threads to impersonate the security context of another process—including processes on a remote Windows system—without affecting other threads in the process.
 
-### Job 
+### Job
 
 - Windows provides an extension to the process model called a **job**.
 - A job object’s main function is to allow groups of processes to be managed and manipulated as a unit.
@@ -801,12 +801,7 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 #### Software Interrupt Request Levels (IRQLs)
 
 - although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
-
-
-
-
-
-
+- TO CONTINUE ...
 
 ## Chapter 8 Security
 
@@ -814,17 +809,17 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 
 These are the core components and databases that implement Windows security:
 - __Security reference monitor (SRM)__:
-    - defines the access token data structure to represent a security context,;
+    - defines the access token data structure to represent a security context;
     - perform security access checks on objects;
     - manipulate privileges (user rights), and generating any resulting security audit messages.
 - __Local Security Authority subsystem (LSASS)__:
     - local system security policy (such as which users are allowed to log on to the machine, password policies, privileges granted to users and groups, and the system security auditing settings)
     - user authentication
-    - sends security audit messages to the Event Log The Local Security Authority service (Lsasrv)
+    - sends security audit messages to the *Event Log The Local Security Authority service (Lsasrv)*
     - Lsasrv.dll is a library that LSASS loads, implements most of this functionality
 - __LSASS policy database__:
     - contains the local system security policy settings.
-    - stored in the registry in an ACL-protected area under `HKLM\SECURITY`. 
+    - stored in the registry in an ACL-protected area under `HKLM\SECURITY`.
     - contains information like:
         - what domains are entrusted to authenticate logon attempts
         - who has permission to access the system and how (interactive, network, and service logons),
@@ -849,7 +844,7 @@ These are the core components and databases that implement Windows security:
 - __Logon user interface (LogonUI)__:
     - user-mode process `LogonUI.exe` that presents users with the user interface they can use to authenticate themselves on the system LogonUI uses credential providers to query user credentials through various methods
 - __Credential providers (CPs)__:
-    -  In-process COM objects that run in the LogonUI process and used to obtain a user’s name and password, smartcard PIN, or biometric data (such as a fingerprint). 
+    -  In-process COM objects that run in the LogonUI process and used to obtain a user’s name and password, smartcard PIN, or biometric data (such as a fingerprint).
     - The standard CPs are implemented in _authui.dll_ and  _SmartcardCredentialProvider.dll_.
 - __Network logon service (Netlogon)__:
     - A Windows service _Netlogon.dll_ that sets up the secure channel to a domain controller, over which security requests—such as an interactive logon or LAN Manager and NT LAN Manager (v1 and v2) authentication validation—are sent.
@@ -863,15 +858,33 @@ These are the core components and databases that implement Windows security:
 
 ### Protecting Objects
 
+- __object protection__ and access logging is the essence of discretionary access control and auditing.
+- objects that are not exposed to user mode (such as driver objects) are usually not protected. however, system resources that are exported to user mode require security validation.
+-  when a thread is __impersonating__, security validation mechanisms use the __thread’s security context__ instead of that of the thread’s process. When a thread isn’t impersonating, security validation falls back on using the security context of the thread’s owning process
 
+### Access Checks
 
+- When a process tries to access an object by name or tries to reference an object using an existing handle, access validation by the object manager will be executed.
+- `ObpCreateHandle` first calls `ObpGrantAcces`s to see if the thread has permission to access the object; if the thread does, `ObpCreateHandle` calls the executive function `ExCreateHandle` to create the entry in the process handle table `ObpGrantAccess` calls `ObCheckObjectAccess` to initiate the security access check.
+- `ObpGrantAccess` passes to `ObCheckObjectAccess` the __security credentials__ of the thread opening the object, the __types of access__ to the object that the thread is requesting (read, write, delete, and so forth), and a __pointer to the object__. `ObCheckObjectAccess` first __locks__ the object’s security descriptor and the security context of the thread. The object security lock prevents another thread in the system from changing the object’s security while the access check is in progress. The lock on the thread’s security context prevents another thread (from that process or a different process) from altering the security identity of the thread while security validation is in progress. `ObCheckObjectAccess` then calls the object’s security method to obtain the security settings of the object.
+- After obtaining an object’s security information, `ObCheckObjectAccess` invokes the SRM function
+`SeAccessCheck`. `SeAccessCheck` is one of the functions at the heart of the Windows security model. Among the input parameters `SeAccessCheck` accepts are the __object’s security information__, the __security identity of the thread__ as captured by `ObCheckObjectAccess`, and the __access__ that the thread is requesting.
 
+### Security Identifiers
 
+- Instead of using names (which might or might not be unique) to identify entities that perform actions in a system, Windows uses __security identifiers (SIDs)__.
+- When displayed textually, each SID carries an S prefix, and its various components are separated with hyphens: `S-1-5-21-1463437245-1224812800-863842198-1128`. In this SID:
+	- the revision number is 1,
+	- the identifier authority value is 5 (the Windows security authority),
+	- and four subauthority values plus one RID (1128) make up the remainder of the SID
+- This SID is a domain SID, but a local computer on the domain would have a SID with the same revision number, identifier authority value, and number of subauthority values.
 
+### Integrity Levels
 
-
-
-
+- Integrity levels can __override discretionary access__ to differentiate a process and objects __running as__ and __owned by__ the same user, offering the ability to isolate code and data within a user account.
+- Objects also have an integrity level stored as part of their security descriptor, in a structure that is called the __mandatory label__.
+- When a process creates an object without specifying an integrity level, the system checks the
+integrity level in the token. For tokens with a level of __medium or higher__, the implicit integrity level of the object __remains medium__. However, when a token contains an integrity level lower than medium, the object is created with an explicit integrity level that matches the level in the token.
 
 ## Chapter 10 Memory Management
 
