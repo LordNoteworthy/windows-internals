@@ -1,6 +1,6 @@
 # Windows Internals 6ed.
 
-##  Chapter 1 Concepts and Tools
+## Chapter 1 Concepts and Tools
 
 - The Microsoft NET Framework consists of a library of classes called the **Framework Class Library (FCL)** and a **Common Language Runtime (CLR)** that provides a managed code execution environment with features such as just-in-time compilation, type verification, garbage collection, and code access security.
 
@@ -84,7 +84,6 @@
     - And Windows implementation limits in the current versions of 64-bit Windows further reduce this to 8192 GB (8 TB)
     <p align="center"><img src="https://i.imgur.com/oVVFRcB.png" width="400px" height="auto"></p>
 
-
 ### Kernel Mode vs. User Mode
 
 - To prevent user applications to modify critical OS data, Windows uses two processor access modes (even if the processor on which Windows is running supports more than two): **user mode** and **kernel mode**.
@@ -132,7 +131,7 @@ shared, protected, named, or made visible to user-mode programs (via system serv
     - per-process CPU usage.
     - CPU usage of each service hosting process.
     - Physical memory bar graph displays the current organization of physical memory into either hardware reserved, in use, modified, standby, and free memory.
-    - Per-file information for I/Os in a way that makes it easy to identify the most accessed, written to, or read from files on the system. 
+    - Per-file information for I/Os in a way that makes it easy to identify the most accessed, written to, or read from files on the system.
     - Active network connections and which processes own them, as well as how much data is going through them.
 
 ### Kernel debugging
@@ -411,8 +410,8 @@ Current IRQL -- 13
 Threads--  Current fffff80002c5a1c0 Next fffffa800586bb50 Idle fffff80002c5a1c0
 Processor Index 0 Number (0, 0) GroupSetMember 1
 Interrupt Count -- 000174c7
-Times -- Dpc    00000012 Interrupt 00000012 
-         Kernel 00000574 User      00000072 
+Times -- Dpc    00000012 Interrupt 00000012
+         Kernel 00000574 User      00000072
 
 0: kd> dt nt!_KPCR
    +0x000 NtTib            : _NT_TIB
@@ -743,7 +742,7 @@ Dumping IDT: fffff8000a0d1000
     - work with __multiprocessor__ systems.
     - have __256__ interrupt lines. I
     - for compatibility, apic supports a pic mode.
-    - consists of several components: 
+    - consists of several components:
         - an __I/O APIC__ that receives interrupts from devices
         - __local APICs__ that receive interrupts from the I/O APIC on the bus and that interrupt the CPU they are associated with
         - an i8259A-compatible interrupt controller that translates APIC input into PIC-equivalent signals.
@@ -800,7 +799,8 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 
 #### Software Interrupt Request Levels (IRQLs)
 
-- although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
+- Although interrupt controllers perform interrupt prioritization, Windows __imposes__ its own interrupt __priority__ scheme known as __interrupt request levels (IRQLs)__.
+- The kernel represents IRQLs internally as a number from 0 through 31 on x86 and from 0 to 15 on x64 and IA64, with __higher numbers__ representing __higher-priority__ interrupts.
 - TO CONTINUE ...
 
 ## Chapter 8 Security
@@ -836,7 +836,7 @@ These are the core components and databases that implement Windows security:
     - A domain is a collection of computers and their associated security groups that are managed as a single entity.
     - it stores information about the objects in the domain, including users, groups, and computers.
     - The AD server, implemented as _Ntdsa.dll_, runs in the LSASS process.
-- __Authentication packages__: 
+- __Authentication packages__:
     - include DLLs that run both in the context of the LSASS process and client processes, and implement Windows authentication policy.
     - An authentication DLL is responsible for authenticating a user, by checking whether a given user name and password match.
 - __Interactive logon manager (Winlogon)__:
@@ -1022,7 +1022,7 @@ RestrictedSidCount: 0 RestrictedSids: 00000000
 OriginatingLogonSession: 3e7
 ```
 
-### Impersontion
+### Impersonation
 
 - Impersonation lets a server notify the SRM that the server is temporarily adopting the security profile of a client making a resource request.
 - If a server communicates with a client through a __named pipe__, the server can use the
@@ -1047,9 +1047,21 @@ OriginatingLogonSession: 3e7
 	- The administrator and administrator-like SIDs mentioned previously are marked as __deny-only__ to prevent a security hole if the group was removed altogether.
 	- All privileges are stripped except _Change Notify, Shutdown, Undock, Increase Working Set_, and _Time Zone_.
 
+## Chapter 9: Storage Management
+
+### The Volume Namespace
+
+#### Mount Points
+
+- Mount points let you link volumes through directories on NTFS volumes, which makes volumes with no drive-letter assignment accessible.
+- What makes mount points possible is __reparse point__ technology.
+- A reparse point is a block of arbitrary data with some fixed header data that Windows associates with an NTFS file or directory.
+- One common use of reparse points is the symbolic link functionality offered on Windows by NTFS.
+- Mount points are reparse points that store a volume name `\Global??\Volume{X}` as the reparse data.
+
 ## Chapter 10 Memory Management
 
-## Introduction to the Memory Manager
+### Introduction to the Memory Manager
 
 - because the VAS might be larger or smaller than the PM on the machine, the memory manager has two primary tasks:
     - __translating, or mapping__, a process’s VAS into PM so that when a thread running in the context of that process reads or writes to the VAS, the correct physical address is referenced. (The subset of a process’s virtual address space that is physically resident is called the __working set__).
@@ -1061,9 +1073,9 @@ OriginatingLogonSession: 3e7
     - a set of __executive system services__ for allocating, deallocating, and managing virtual memory, most of which are exposed through the Windows API or kernel-mode device driver interfaces.
     - __translation-not-valid__ and __access fault trap handler__ for resolving hardware-detected memory management exceptions and making virtual pages resident on behalf of a process.
     - Six __key top-level routines__, each running in one of six different kernel-mode threads in the System process:
-        - __balance set manager__ (`KeBalanceSetManager`, priority 16). It calls an inner routine, the __working set manager__ (`MmWorkingSetManager`), once per second as well as when free memory falls below a certain threshold. The working set manager drives the overall memory management policies, such as __working set trimming, aging, and modified page writing__. 
+        - __balance set manager__ (`KeBalanceSetManager`, priority 16). It calls an inner routine, the __working set manager__ (`MmWorkingSetManager`), once per second as well as when free memory falls below a certain threshold. The working set manager drives the overall memory management policies, such as __working set trimming, aging, and modified page writing__.
         - __process/stack swapper__ (`KeSwapProcessOrStack`, priority 23) performs both process and kernel thread stack inswapping and outswapping. The balance set manager and the thread-scheduling code in the kernel awaken this thread when an inswap or outswap operation needs to take place.
-        - __modified page writer__ (`MiModifiedPageWriter`, priority 17) writes __dirty pages__ on the modified list back to the appropriate paging files. This thread is awakened when the size of the modified list needs to be reduced. 
+        - __modified page writer__ (`MiModifiedPageWriter`, priority 17) writes __dirty pages__ on the modified list back to the appropriate paging files. This thread is awakened when the size of the modified list needs to be reduced.
         - __mapped page writer__ (`MiMappedPageWriter`, priority 17) writes dirty pages in mapped files to disk (or remote storage). It is awakened when the size of the modified list needs to be reduced or if pages for mapped files have been on the modified list for more than 5 minutes. This second modified page writer thread is necessary because it can generate page faults that result in requests for free pages. If there were no free pages and there was only one modified page writer thread, the system could deadlock waiting for free pages.
         - __segment dereference thread__ (`MiDereferenceSegmentThread`, priority 18) is responsible for cache reduction as well as for page file growth and shrinkage. (For example, if there is no VAS for paged pool growth, this thread trims the page cache so that the paged pool used to anchor it can be freed for reuse.)
         - __zero page thread__ (`MmZeroPageThread`, base priority 0) zeroes out pages on the free list so that a cache of zero pages is available to satisfy future demand-zero page faults. Unlike the other routines described here, this routine is not a top-level thread function but is called by the top-level thread routine Phase1Initialization. MmZeroPageThread never returns to its caller, so in effect the Phase 1 Initialization thread becomes the zero page thread by calling this routine. Memory zeroing in some cases is done by a faster function called `MiZeroInParallel`.
@@ -1132,7 +1144,7 @@ OriginatingLogonSession: 3e7
 
 ### Services Provided by the Memory Manager
 
-- the Windows API has three groups of functions for managing memory in applications: 
+- the Windows API has three groups of functions for managing memory in applications:
     - __heap functions__ (_Heapxxx_ and the older interfaces _Localxxx_ and _Globalxxx_, which internally make use of the _Heapxxx_ APIs), which may be used for allocations __smaller than a page__;
     - virtual memory functions, which operate with page granularity (_Virtualxxx_);
     - and __memory mapped file functions__ (`CreateFileMapping`, `CreateFileMappingNuma`, `MapViewOfFile`, `MapViewOfFileEx`, and `MapViewOfFileExNuma`).
@@ -1148,20 +1160,20 @@ OriginatingLogonSession: 3e7
 - primary advantage of large pages is __speed of address translation__ for references to other data within the large page.
 - first reference to any byte within a large page will cause the hardware’s __translation look-aside buffer TLB__  to have in its cache the information necessary to translate references to any other byte within the large page.
 - to take advantage of large pages on systems with more than 2 GB of RAM, Windows maps with large pages:
-    - the __core OS images__ (`Ntoskrnl.exe` and `Hal.dll`) 
+    - the __core OS images__ (`Ntoskrnl.exe` and `Hal.dll`)
     - as well as __core OS data__ (such as the initial part of __nonpaged pool__ and the data structures that describe the state of each physical memory page).
     - also automatically maps __I/O space requests__ (calls by device drivers to `MmMapIoSpace`) with large pages if the request is of satisfactory large page length and alignment.
     - user mode apps can use `MEM_LARGE_PAGE` during mem alloc.
     - drivers can set _LargePageDrivers_.
 - few notes regarding large pages:
     - allocating large pages could fail as freeing physical memory does become __fragmented__ as the system runs.
-    - tt is not possible to specify anything but __read/write__ access to large pages. 
+    - tt is not possible to specify anything but __read/write__ access to large pages.
     - the memory is also always __nonpageable__, because the page file system does not support large page.
     - if a large page contains, for example, both __read-only code__ and __read/write data__, the page must be marked as __read/write__, which means that the code will be writable. This means that device drivers or other kernel-mode code could, as a result of a bug, modify what is supposed to be __read-only__ OS or driver code without causing a memory access violation.
 
 #### Reserving and Committing Pages
 
-- pages in a process VAS are __free, reserved, committed, or shareable__. 
+- pages in a process VAS are __free, reserved, committed, or shareable__.
 - __committed__ and __shareable__ pages are pages that, when accessed, ultimately translate to valid pages in physical memory.
 - __shared pages__ are usually mapped to a view of a section, which in turn is part or all of a file, but may instead represent a portion of page file space.
     - all shared pages can potentially be shared with other processes.
@@ -1178,11 +1190,11 @@ OriginatingLogonSession: 3e7
 
 - pages can be locked in memory in two ways:
     - Windows applications can call the `VirtualLock` function to lock pages in their process working set.
-        - pages locked using this mechanism remain in memory until explicitly unlocked or until the process that locked them terminates. 
+        - pages locked using this mechanism remain in memory until explicitly unlocked or until the process that locked them terminates.
         - the number of pages a process can lock __can’t exceed its minimum working set size minus eight pages__.
         - therefore, if a process needs to lock more pages, it can increase its working set minimum with the `SetProcessWorkingSetSizeEx`.
     - device drivers can call the kernel-mode functions `MmProbeAndLockPages`, `MmLockPagableCodeSection`, `MmLockPagableDataSection`, or `MmLockPagableSectionByHandle`.
-        - pages locked using this mechanism remain in memory until explicitly unlocked. 
+        - pages locked using this mechanism remain in memory until explicitly unlocked.
         - the last three of these APIs __enforce no quota__ on the number of pages that can be locked in memory because the resident available page charge is obtained when the driver first loads; this ensures that it can never cause a system crash due to overlocking.
         - for the first API, quota charges must be obtained or the API will return a failure status.
 
@@ -1211,7 +1223,7 @@ OriginatingLogonSession: 3e7
     1. all __systemwide data structures__ and __memory pools used by kernel-mode__ system components can be accessed only while in __kernel__ mode.
         - user-mode threads can’t access these pages
         - if they attempt to do so, the hardware generates a fault, which in turn the memory manager reports to the thread as an access violation.
-    2. each process has a separate, __private address space__, protected from being accessed by any thread belonging to another process. 
+    2. each process has a separate, __private address space__, protected from being accessed by any thread belonging to another process.
         - even shared memory is not really an exception to this because each process accesses the shared regions using addresses that are part of its __own VAS__.
     3. in addition to the implicit protection virtual-to-physical address translation offers, all processors supported by Windows provide some form of __hardware-controlled memory protection__ (such as read/write, read-only, and so on).
     4. shared memory section objects have standard Windows __ACLs__ that are checked when processes attempt to open them, thus limiting access of shared memory to those processes with the proper rights.
@@ -1277,7 +1289,7 @@ OriginatingLogonSession: 3e7
 - it then can access the physical memory by mapping a portion of its VAS into selected portions of the physical memory at various times.
 - allocating and using memory via the AWE functions is done in three steps:
     1. allocating the physical memory to be used:  `AllocateUserPhysicalPages` or `AllocateUserPhysicalPagesNuma`.
-    2. creating one or more regions of VAS to act as windows to map views of the physical memory. The application uses the Win32 `VirtualAlloc(Ex)`, or `VirtualAllocExNuma` function with the __MEM_PHYSICAL__ flag. 
+    2. creating one or more regions of VAS to act as windows to map views of the physical memory. The application uses the Win32 `VirtualAlloc(Ex)`, or `VirtualAllocExNuma` function with the __MEM_PHYSICAL__ flag.
     3. to actually use the memory, the app uses `MapUserPhysicalPages` or `MapUserPhysicalPagesScatter` to map a portion of the physical region allocated in step 1 into one of the virtual regions, or windows, allocated in step 2.
     <p align="center"><img src="https://i.imgur.com/UD6vywq.png" width="450px" height="auto"></p>
 
@@ -1392,7 +1404,7 @@ Number of regions cached: 292
 
 - Windows provides a fast memory allocation mechanism called __look-aside lists__.
 - the difference between pools and look-aside lists:
-    - general pool allocations can __vary__ in size, a look-aside list contains only __fixed-sized__ blocks. 
+    - general pool allocations can __vary__ in size, a look-aside list contains only __fixed-sized__ blocks.
     - although the general pools are more flexible in terms of what they can supply, look-aside lists are __faster__ because they don’t use any __spinlocks__.
 - contents and sizes of the various system look-aside lists:
 ```c
@@ -1437,9 +1449,9 @@ Total Paged potential for above lists              =   367832
 #### Heap Manager Structure
 
 - the heap manager is structured in two layers: an __optional front-end layer__ and the __core heap__.
-- the core heap handles the basic functionality and is mostly common across the usermode and kernel-mode heap implementations. 
+- the core heap handles the basic functionality and is mostly common across the usermode and kernel-mode heap implementations.
 - the core functionality includes the management of blocks inside segments, the management of the segments, policies for extending the heap, committing and decommitting memory, and management of the large blocks. <p align="center"><img src="https://i.imgur.com/pIABTFh.png" width="450px" height="auto"></p>
-- for user-mode heaps only, an optional front-end heap layer can exist on top of the existing core functionality. 
+- for user-mode heaps only, an optional front-end heap layer can exist on top of the existing core functionality.
 - the only front-end supported on Windows is the __Low Fragmentation Heap (LFH)__. Only one front-end layer can be used for one heap at one time.
 
 #### Heap Synchronization
@@ -1455,7 +1467,7 @@ Total Paged potential for above lists              =   367832
     - in these cases, memory available for heap usage might be reduced as a result of __heap fragmentation__.
     - performance can suffer in scenarios where only certain sizes are often used concurrently from different threads scheduled to run on different processors.
     - this happens because several processors need to modify the same memory location (i.e the head of the look-aside list for that particular size) at the same time, thus causing significant contention for the corresponding cache line.
-- LFH avoids fragmentation by managing allocated blocks in predetermined different block-size ranges called __buckets__. 
+- LFH avoids fragmentation by managing allocated blocks in predetermined different block-size ranges called __buckets__.
 - LFH chooses the bucket that maps to the __smallest block__ large enough to hold the required size.
 
 |Buckets |Granularity | Range |
@@ -1519,23 +1531,23 @@ Next block : 0x001e25a0
 
 - three main types of data are mapped into the VAS in Windows:
     - per-process private code and data
-    - sessionwide code and data, 
+    - sessionwide code and data
     - systemwide code and data.
 - the information that describes the process VAS, called __page tables__.
     - each process bas its own set of page tables.
     - they are stored in kernel mode.
 - __session space__ contains information that is common to each session:
     - consists of the processes and other system objects (such as the window station, desktops, and windows) that represent a single user’s logon session
-    - each session has a session-specific paged pool area used by Win32k.sys to allocate session-private GUI data structures. 
+    - each session has a session-specific paged pool area used by Win32k.sys to allocate session-private GUI data structures.
     - each session has its own copy of the Windows subsystem process (Csrss.exe) and logon process (Winlogon.exe).
-- __system space__ contains global OS code and data structures visible by kernel-mode code regardless of which process is currently executing. System space consists of the following components: 
+- __system space__ contains global OS code and data structures visible by kernel-mode code regardless of which process is currently executing. System space consists of the following components:
     - __system code__ contains the OS image, HAL, and device drivers used to boot the system.
     - __nonpaged pool__: nonpageable system memory heap.
     - __paged pool__: pageable system memory heap.
     - __system cache__: VAS used to map files open in the system cache.
     - __system page table entries (PTEs)__: pool of system PTEs used to map system pages such as I/O space, kernel stacks, and memory descriptor lists.
     - __system working set lists__: the working set list data structures that describe the three system working sets (the system cache working set, the paged pool working set, and the system PTEs working set).
-    - __system mapped views__: used to map Win32k.sys, the loadable kernel-mode part of the Windows subsystem, as well as kernel-mode graphics drivers it uses. 
+    - __system mapped views__: used to map Win32k.sys, the loadable kernel-mode part of the Windows subsystem, as well as kernel-mode graphics drivers it uses.
     - __hyperspace__: a special region used to map the process working set list and other per-process data that doesn’t need to be accessible in arbitrary process context. Hyperspace is also used to temporarily map physical pages into the system space. One example of this is invalidating page table entries in page tables of processes other than the current one (such as when a page is removed from the standby list).
     - __crash dump information__: reserved to record information about the state of a system crash.
     - __HAL__ usage System memory reserved for HAL-specific structures.
@@ -1658,7 +1670,7 @@ PROCESS fffffa800571bb00
    +0x1ee0 SpecialPoolPdeCount : 0
    +0x1ee4 DynamicSessionPdeCount : 0x1b
    +0x1ee8 SystemPteInfo    : _MI_SYSTEM_PTE_TYPE
-   +0x1f30 PoolTrackTableExpansion : (null) 
+   +0x1f30 PoolTrackTableExpansion : (null)
    +0x1f38 PoolTrackTableExpansionSize : 0
    +0x1f40 PoolTrackBigPages : 0xfffffa80`050ad000 Void
    +0x1f48 PoolTrackBigPagesSize : 0x200
@@ -1666,7 +1678,7 @@ PROCESS fffffa800571bb00
    +0x1f54 IoStateSequence  : 7
    +0x1f58 IoNotificationEvent : _KEVENT
    +0x1f70 CreateTime       : 0xbdfbd3d
-   +0x1f78 CpuQuotaBlock    : (null) 
+   +0x1f78 CpuQuotaBlock    : (null)
 ```
 
 - to view session space memory utilization:
@@ -1759,7 +1771,7 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 | Region| IA64 x64|
 |-------|---------|
 | Process Address Space| 7,152 GB | 8,192 GB |
-| System PTE Space| 128 GB | 128 GB| 
+| System PTE Space| 128 GB | 128 GB|
 | System Cache| 1 TB | 1 TB|
 | Paged Pool| 128 GB| 128 GB|
 | Nonpaged Pool| 75% of physical memory | 75% of physical memory|
@@ -1777,7 +1789,7 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 
 #### Windows x64 16-TB Limitation
 
-- Windows on x64 has a further limitation: of the 256 TB of VAS available on x64 processors, Windows at present allows only the use of a little more than __16 TB__. 
+- Windows on x64 has a further limitation: of the 256 TB of VAS available on x64 processors, Windows at present allows only the use of a little more than __16 TB__.
 - this is split into two 8-TB regions:
     - a user mode, per-process region starting at 0 toward __0x000007FFFFFFFFFF__
     - a kernel-mode, systemwide region starting at “all Fs” and working toward __0xFFFFF80000000000__ for most purposes.
@@ -1800,12 +1812,12 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 #### Image Randomization
 
 - for executables, the load offset is calculated by computing a delta value each time an executable is loaded.
-    - this value is a pseudo-random 8-bit number from __0x10000 to 0xFE0000__, calculated by taking the current processor’s time stamp counter (TSC), shifting it by four places, and then performing a division modulo 254 and adding 1 (so it can never load at the address in the PE header). 
+    - this value is a pseudo-random 8-bit number from __0x10000 to 0xFE0000__, calculated by taking the current processor’s time stamp counter (TSC), shifting it by four places, and then performing a division modulo 254 and adding 1 (so it can never load at the address in the PE header).
     - this number is then multiplied by the allocation granularity of 64 KB.
     - this delta is then __added__ to the executable’s __preferred load address__, creating one of 256 possible locations within 16 MB of the image address in the PE header.
-- for DLLs, computing the load offset begins with a __per-boot__, __systemwide__ value called the __image bias__, which is computed by `MiInitializeRelocations` and stored in `MiImageBias`. 
+- for DLLs, computing the load offset begins with a __per-boot__, __systemwide__ value called the __image bias__, which is computed by `MiInitializeRelocations` and stored in `MiImageBias`.
     - this value corresponds to the TSC of the current CPU when this function was called during the boot cycle, shifted and masked into an 8-bit value, which provides 256 possible values.
-    - this value is computed only __once per boot__ and __shared__ across the system to allow DLLs to remain shared in physical memory and __relocated only once__. 
+    - this value is computed only __once per boot__ and __shared__ across the system to allow DLLs to remain shared in physical memory and __relocated only once__.
 
 #### Stack Randomization
 
@@ -1836,7 +1848,7 @@ f0afa000 1 1 cpqasm2+0x2af67/cpqasm2+0x6d82
 
 - each page of VAS is associated with a system-space structure called a __page table entry (PTE)__, which contains the physical address to which the virtual one is mapped.
 - there may not even be __any PTEs__ for regions that have been marked as __reserved or committed__ but never __accessed__, because the page table itself might be allocated only when the first page fault occurs.
-- non-PAE x86 systems use a __two-level__ page table structure to translate virtual to physical addresses. A 32-bit virtual address mapped by a normal 4-KB page is interpreted as two fields: 
+- non-PAE x86 systems use a __two-level__ page table structure to translate virtual to physical addresses. A 32-bit virtual address mapped by a normal 4-KB page is interpreted as two fields:
     - the __virtual page number__ and the byte within the page, called the __byte offset__.
     - the virtual page number is further divided into two subfields, called the __page directory index__ and the __page table index__:
     <p align="center"><img src="https://i.imgur.com/gyAWAAx.png"  height="auto"></p>
@@ -1872,7 +1884,7 @@ pfn 6f06b ---DA--UWEV pfn 3ef8c ---D---UWEV
 ```
 - the page tables that describe system space are __shared among all processes__.
 - and session space is shared only among processes in a session.
-- to avoid having multiple page tables describing the same virtual memory, when a process is created, the page directory entries that describe system space are __initialized to point to the existing__ system page tables. 
+- to avoid having multiple page tables describing the same virtual memory, when a process is created, the page directory entries that describe system space are __initialized to point to the existing__ system page tables.
 - if the process is part of a session, __session space page tables__ are also __shared__ by pointing the session space page directory entries to the existing session page tables.
 
 #### Page Tables and Page Table Entries
@@ -1894,3 +1906,69 @@ pfn 6f06b ---DA--UWEV pfn 3ef8c ---D---UWEV
 | Write through | Marks the page as write-through or (if the processor supports the page attribute table)|
 | write-combined | This is typically used to map video frame buffer memory.|
 | Write | Indicates to the MMU whether the page is writable.|
+
+
+## Chapter 12: File systems
+
+### Windows File System Formats
+
+### File System Driver Architecture
+
+#### Local FSDs
+
+#### Remote FSDs
+
+- Each remote FSD consists of two components: a __client__ and a __server__.
+- client-side remote FSD allows apps to access remote files and directories.
+- client FSD component accepts I/O requests from apps and translates them into __network FS protocol commands__ (such as SMB) that the FSD sends across the network to a server-side component, which is a remote FSD.
+- A server-side FSD listens for commands coming from a network connection and fulfills them by issuing I/O requests to the local FSD that manages the volume on which the file or directory that the command is intended for resides.
+
+<p align="center"><img src="./assets/common-internet-file-system-sharing.png" width="500px" height="auto"></p>
+
+- SMB client-side remote FSDs implement a __distributed cache coherency protocol__, called __oplock (opportunistic locking)__, so that the data an app sees when it accesses a remote file is the same as the data apps running on other
+computers that are accessing the same file see.
+
+##### Locking
+
+- The locking mechanisms used by all file servers implementing the SMB protocol are the __oplock__ and the __lease__.
+- Which mechanism is used depends on the capabilities of both the server and the client, with the lease being the preferred mechanism.
+
+###### Oplocks
+
+- why called opportunistic ? because the server grants such locks whenever __other factors make the locks possible__.
+- purpose: reducing network traffic and improving apparent response time.
+    - => not all read / writes has to go to the server.
+- type of oplock determines what type of caching is allowed.
+- An oplock is not necessarily held until a client is finished with the file, and it may be __broken__ at any time if the server receives an operation that is incompatible with the existing granted locks.
+- Prior to SMB 2.1, there were four types of oplocks:
+    - __Level 1, exclusive access__: This lock allows a client to open a file for exclusive access. The client may perform __read-ahead buffering__ and __read or write caching__.
+    - __Level 2, shared access__: This lock allows __multiple, simultaneous readers of a file and no writers__. The client may perform read-ahead buffering and read caching of file data and attributes. A write to the file will cause the holders of the lock to be notified that the lock has been broken.
+    - __Batch, exclusive access__: This lock takes its name from the locking used when processing batch (.bat) files, which are opened and closed to process each line within the file. The client may keep a file open on the server, even though the application has (perhaps temporarily) closed the file. This lock supports read, write, and handle caching.
+    - __Filter, exclusive access__: This lock provides applications and file system filters with a mechanism to give up the lock when other clients try to access the same file, but unlike a Level 2 lock, the file cannot be opened for delete access, and the other client will not receive a sharing violation. This lock supports read and write caching.
+    - locks a file so that it cannot be opened for either write or delete access
+- oplock modes are based upon how the file is opened, __not individual I/O requests__.
+
+<p align="center"><img src="./assets/oplock-example.png" width="500px" height="auto"></p>
+
+- If the first client hadn’t written to the file, the first client’s oplock would have been __broken to a Level 2 oplock__, which is the same type of oplock the server would grant to the second client.
+-  Now both clients can cache reads, but if either writes to the file, the server revokes their oplocks so that
+noncached operation commences.
+
+###### Leases
+
+- In SMB 2.1, the concept of a lease is introduced as a new type of client caching mechanism, similar to an oplock.
+- The purpose of a lease and an oplock is the same, but provides __greater flexibility and much better performance__.
+- Staring with Windows 7, oplocks (aka leases) are used quite extensively even on local file systems to __prevent sharing violations__.
+- __Read (R), shared access__:
+    - allows multiple simultaneous readers of a file, and no writers.
+    - allows the client to perform read-ahead buffering and read caching.
+- __Read-Handle (RH), shared access__:
+    - is similar to the Level 2 oplock
+    - + allowing the client to keep a file open on the server even though the accessor on the client has closed the file => lease does not need to be broken between opens and closes of the file handle.
+    - especially useful for files that are repeatedly opened and closed because the cache is not invalidated when the file is closed and refilled when the file is opened again, providing a big improvement in performance for complex I/O intensive apps.
+- __Read-Write (RW), exclusive access__:
+    - allows a client to open a file for exclusive access.
+    - allows the client to perform read-ahead buffering and read or write caching.
+- __Read-Write-Handle (RWH), exclusive access__:
+    - This lock allows a client to open a file for exclusive access.
+    - This lease supports read, write, and handle caching (similar to the Read-Handle lease)
