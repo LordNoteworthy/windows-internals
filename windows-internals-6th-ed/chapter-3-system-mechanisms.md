@@ -1,21 +1,21 @@
-## Chapter 3 System Mechanisms
+# Chapter 3 System Mechanisms
 
-### Trap Dispatching
+## Trap Dispatching
 
 - __Interrupts__ and __exceptions__ are OS conditions that divert the processor to code outside the normal flow of control.
 - The term __trap__ refers to a processor’s mechanism for capturing an executing thread when an exception or an interrupt occurs and transferring control to a fixed location in the OS.
 - The processor transfers control to a __trap handler__, which is a function specific to a particular interrupt or exception.
 - The kernel distinguishes between interrupts and exceptions in the following way:
-    - an interrupt is an __asynchronous__ event (one that can occur at any time) that is unrelated to what the processor is executing.
-        - are generated primarily by __I/O devices, processor clocks, or timers__, and they can be enabled or disabled.
-    - an exception, in contrast, is a __synchronous__ condition that usually results from the execution of a particular instruction.
-        - running a program a second time with the same data under the same conditions can reproduce exceptions.
-        - examples of exceptions include __memory-access violations__, __certain debugger instructions__, and __divideby-zero__ errors.
-        - the kernel also regards system service calls as exceptions (although technically they’re system traps).
-    <p align="center"><img src="https://i.imgur.com/UFazASp.png" width="400px" height="auto"></p>
+    - An interrupt is an __asynchronous__ event (one that can occur at any time) that is unrelated to what the processor is executing.
+        - Generated primarily by __I/O devices, processor clocks, or timers__, and they can be enabled or disabled.
+    - An exception, in contrast, is a __synchronous__ condition that usually results from the execution of a particular instruction.
+        - Running a program a second time with the same data under the same conditions can reproduce exceptions.
+        - Examples of exceptions include __memory-access violations__, __certain debugger instructions__, and __divideby-zero__ errors.
+        - The kernel also regards system service calls as exceptions (although technically they’re system traps).
+    <p align="center"><img src="./assets/trap-handlers.png" width="400px" height="auto"></p>
 - Either hardware or software can generate exceptions and interrupts:
-    - a __bus error__ exception is caused by a hardware problem, whereas a __divide-by-zero__ exception is the result of a software bug.
-    - an __I/O device__ can generate an interrupt, or the kernel itself can issue a software interrupt such as an __APC or DPC__.
+    - A __bus error__ exception is caused by a hardware problem, whereas a __divide-by-zero__ exception is the result of a software bug.
+    - An __I/O device__ can generate an interrupt, or the kernel itself can issue a software interrupt such as an __APC or DPC__.
 - When a hardware exception or interrupt is generated, the processor records enough machine state on the __kernel stack of the thread__ that’s interrupted to return to that point in the control flow and continue execution as if nothing had happened. If the thread was executing in user mode, Windows __switches to the thread’s kernel-mode stack__.
 - Windows then creates a __trap frame__ on the kernel stack of the interrupted thread into which it stores the execution state of the thread
     ```c
@@ -35,7 +35,7 @@
     ...
     ```
 
-#### Interrupt Dispatching
+### Interrupt Dispatching
 
 - Hardware-generated interrupts typically originate from I/O devices that must notify the processor when they need service.
     - Interrupt-driven devices allow the OS to get the __maximum use out of the processor__ by overlapping central processing with I/O operations.
@@ -95,7 +95,7 @@ Dumping IDT: fffff8000a0d1000
         - __I/O APIC__ that receives interrupts from devices
         - __Local APICs__ that receive interrupts from the I/O APIC on the bus and that interrupt the CPU they are associated with.
         - An i8259A-compatible interrupt controller that translates APIC input into PIC-equivalent signals.
-        <p align="center"><img src="https://i.imgur.com/w14WT37.png" width="300px" height="auto"></p>
+        <p align="center"><img src="./assets/apic.png" width="300px" height="auto"></p>
 - x64 Windows will not run on systems that do not have an APIC because they use the APIC for interrupt control.
 - IA64 architecture relies on the __Streamlined Advanced Programmable Interrupt Controller (SAPIC)__, which is an evolution of the APIC. Even if __load balancing__ and __routing__ are present in the firmware, Windows does not take advantage of it; instead, it __statically__ assigns interrupts to processors in a __round-robin__ manner.
 ```c
@@ -156,5 +156,30 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 - After the service routine executes, the interrupt dispatcher lowers the processor’s IRQL to where it was before the interrupt occurred and then loads the saved machine state. The interrupted thread resumes executing where it left off.
 - When the kernel lowers the IRQL, lower-priority interrupts that were masked might materialize. If this happens, the kernel repeats the process to handle the new interrupts.
 - IRQLs are also used to __synchronize__ access to kernel-mode data structures. As a kernel-mode thread runs, it raises or lowers the processor’s IRQL either directly by calling `KeRaiseIrql` and `KeLowerIrql` or, more commonly, indirectly via calls to functions that acquire kernel synchronization objects.
-- For example, when an interrupt occurs, the trap handler (or perhaps the processor) raises the processor’s IRQL to the assigned IRQL of the interrupt source. This elevation __masks__ all interrupts __at and below that IRQL__ (on that processor only), which ensures that
-the processor servicing the interrupt isn’t waylaid by an interrupt at the __same level or a lower level__. The masked interrupts are either handled by another processor or held back until the IRQL drops. Therefore, all components of the system, including the kernel and device drivers, attempt to __keep the IRQL at passive level__ (sometimes called low level). They do this because device drivers can respond to hardware interrupts in a timelier manner if the IRQL isn’t kept unnecessarily elevated for long periods.
+- For example, when an interrupt occurs, the trap handler (or perhaps the processor) raises the processor’s IRQL to the assigned IRQL of the interrupt source. This elevation __masks__ all interrupts __at and below that IRQL__ (on that processor only), which ensures that the processor servicing the interrupt isn’t waylaid by an interrupt at the __same level or a lower level__. The masked interrupts are either handled by another processor or held back until the IRQL drops. Therefore, all components of the system, including the kernel and device drivers, attempt to __keep the IRQL at passive level__ (sometimes called low level). They do this because device drivers can respond to hardware interrupts in a timelier manner if the IRQL isn’t kept __unnecessarily elevated for long periods__.
+-  >> :bangbang: An exception to the rule that raising the IRQL blocks interrupts of that level and lower relates to APC-level interrupts If a thread raises the IRQL to APC level and then is rescheduled because of a dispatch/DPC-level interrupt, the system might deliver an APC-level interrupt to the newly scheduled thread Thus, APC level can be considered a thread-local rather than processor-wide IRQL.
+-  Processor’s IRQL is always at __passive level__ when it’s executing usermode code. Only when the processor is executing kernel-mode code can the IRQL be higher.
+
+#### Mapping Interrupts to IRQLs
+
+- IRQL levels aren’t the same as the interrupt requests (IRQs) defined by interrupt controllers.
+- In HAL in Windows, a type of device driver called a __bus driver__ determines the presence of devices on its bus (PCI, USB, and so on) and what interrupts can be assigned to a device.
+- The bus driver reports this information to the __Plug and Play__ manager, which decides, after taking into account the acceptable interrupt assignments for all other devices, which interrupt will be assigned to each device.
+- Then it calls a Plug and Play interrupt arbiter, which __maps interrupts to IRQLs__.
+
+#### Predefined IRQLs
+
+- The kernel uses __high level__ only when it’s halting the system in `KeBugCheckEx` and masking out all interrupts.
+- __Power fail level__ originated in the original Windows NT design documents, which specified the behavior of system power failure code, but this IRQL has never been used.
+- __Interprocessor interrupt level__ is used to request another processor to perform an action, such as updating the processor’s TLB cache, system shutdown, or system crash.
+- __Clock level__ is used for the system’s clock, which the kernel uses to track the time of day as well as to measure and allot CPU time to threads.
+- The system’s real-time clock (or another source, such as the local APIC timer) uses __profile level__ when kernel profiling (a performance-measurement mechanism) is enabled.
+- The __synchronization IRQL__ is internally used by the dispatcher and scheduler code to protect access to global thread scheduling and wait/synchronization code.
+- The __device IRQLs__ are used to prioritize device interrupts.
+- The __corrected machine check interrupt level__ is used to signal the OS after a serious but corrected hardware condition or error that was reported by the CPU or firmware through the Machine Check Error (MCE) interface.
+- __DPC/dispatch-level and APC-level interrupts__ are software interrupts that the kernel and device drivers generate.
+- The lowest IRQL, __passive level__, isn’t really an interrupt level at all; it’s the setting at which normal thread execution takes place and all interrupts are allowed to occur.
+- >> :bangbang: One important restriction on code running at DPC/dispatch level or above is that it can’t wait for an object if doing so necessitates the scheduler to select another thread to execute, which is an illegal operation because the scheduler relies on DPC-level software interrupts to schedule threads.
+- >> :bangbang: Another restriction is that only nonpaged memory can be accessed at IRQL DPC/dispatch level or higher. This rule is actually a side effect of the first restriction because attempting to access memory that isn’t resident results in a page fault. When a page fault occurs, the memory manager initiates a disk I/O and then needs to wait for the file system driver to read the page in from disk. This wait would, in turn, require the scheduler to perform a context switch (perhaps to the idle thread if no user thread is waiting to run), thus violating the rule that the scheduler can’t be invoked (because the IRQL is still DPC/dispatch level or higher at the time of the disk read). A further problem results in the fact that I/O completion typically occurs at APC_LEVEL, so even in cases where a wait wouldn’t be required, the I/O would never complete because the completion APC would not get a chance to run.
+
+#### Interrupt Objects
