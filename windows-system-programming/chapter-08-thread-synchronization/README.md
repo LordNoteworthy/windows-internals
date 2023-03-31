@@ -45,3 +45,20 @@ immediately after the `EnterCriticalSection` so that there is no possibility of 
 
 - A pair of functions (`HeapLock` and `HeapUnlock`) is available to synchronize heap access.
 - ▶️ No other thread can allocate or free memory (or walk it using `HeapWalk`) from the heap while a thread owns the heap lock.
+
+## Semaphores
+
+- Semaphores maintain a **count**, and the semaphore object is in the signaled state when the count is greater than 0.
+- The semaphore is **unsignaled** when the count is 0.
+- When a waiting thread is released, the semaphore’s count is **decremented** by 1.
+- A semaphore release (`ReleaseSemaphore`) can **increment** its count by any value up to the maximum.
+- While it is tempting to think of a mutex as a special case of a semaphore with a maximum value of 1, this would be misleading because there is **no semaphore ownership**. Any thread can release a semaphore, not just the one that performed the wait. Likewise, since there is **no ownership**, there is no concept of an abandoned semaphore.
+- 💁 The classic semaphore application regards the semaphore count as representing the number of available resources, such as the **number of messages waiting in a queue**. The semaphore maximum then represents the maximum queue size.
+    - Thus, a **producer** would place a message in the buffer and call `ReleaseSemaphore`, usually
+    with a release count of 1.
+    - Consumer threads would wait on the semaphore, consuming a message and decrementing the semaphore count.
+- ▶️ While semaphores can be **convenient**, they are **redundant** in the sense that mutexes and events used together, are more
+powerful than semaphores.
+- There is still an important limitation with the Windows semaphore implementation.
+    - ❓ How can a thread request that the count be decremented by two or more?
+    - The thread can wait twice in succession but this would not be an atomic operation because the thread could be preempted between waits. But this could cause a *deadlock* ! We can use a CS to solve this issue.
