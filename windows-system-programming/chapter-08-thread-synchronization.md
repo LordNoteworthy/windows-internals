@@ -62,3 +62,30 @@ powerful than semaphores.
 - There is still an important limitation with the Windows semaphore implementation.
     - ❓ How can a thread request that the count be decremented by two or more?
     - The thread can wait twice in succession but this would not be an atomic operation because the thread could be preempted between waits. But this could cause a *deadlock* ! We can use a CS to solve this issue.
+
+## Events
+
+- Events can signal other threads to indicate that some condition, such as a message being available, now holds.
+- The important additional capability offered by events is that **multiple threads** can be released from a wait **simultaneously** when a **single event is signaled**.
+- Events are classified as **manual-reset** and **auto-reset**, and this event property is set by the `CreateEvent` call.
+    - A manual-reset event can signal **several** threads waiting on the event simultaneously and can be **reset**.
+    - An auto-reset event signals a **single** thread waiting on the event, and the event is reset **automatically**.
+- In a producer/consumer system, **events** can be used to eliminate the problem that requires the consumer to try again if a new message is not available.
+
+| API | Auto-Reset Event | Manual-Reset Event|
+|-----|------------------|-------------------|
+| SetEvent |Exactly one thread is released. If none is currently waiting on the event, the first thread to wait on it in the future will be released immediately. The event is automatically reset.|All currently waiting threads are released. The event remains signaled until reset by some thread. |
+| PulseEvent | Exactly one thread is released, but only if a thread is currently waiting on the event. The event is then reset to nonsignaled. | All currently waiting threads, if any, are released, and the event is then reset to nonsignaled. |
+- Comparison of Windows synchronization objects:
+
+|         |  Critical Section | Mutex | Semaphore | Event  |
+|---------|-------------------|-------|-----------|--------|
+| Named, Securable Synchronization Object | No | Yes | Yes | Yes |
+| Accessible from Multiple Processes | No | Yes | Yes | Yes |
+| Synchronization | Enter | Wait | Wait | Wait |
+| Release/Signal | Leave | Release or abandoned | Any thread can release | Set, pulse |
+
+## Message and Object Waiting
+
+- The function `MsgWaitForMultipleObjects` is similar to `WaitForMultipleObjects`.
+- :brain: Use this function to allow a thread to process **user interface events**, such as mouse clicks, while waiting on synchronization objects.
