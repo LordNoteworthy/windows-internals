@@ -1,16 +1,16 @@
 # Chapter 08: Thread Synchronization
 
 - The big problem:
-    - We need to synchronize thread execution in order to ensure that only one thread at a time executes any of the critical regions for a data item.
+    - We need to synchronize thread execution in order to ensure that only one thread at a time executes any of the **critical regions** for a data item.
 - Defective workaround:
     - Give each thread its own copy of the variable.
-    - But: ‼️ An optimizing compiler might leave the value of `N` in a register rather than storing it back in `N`.
+    - But: ⚠️ An optimizing compiler might leave the value of `N` in a register rather than storing it back in `N`.
         - ▶️ Use the ANSI C `volatile` storage qualifier, which ensures that the variable will be stored in memory after modification and will always be fetched from memory before use.
-        - Even the `volatile` modifier does not assure that changes are visible to other processors in a specific order, because a processor might hold the value in cache before committing it to main memory and alter the order in which different processes see the changed values.
-        - To assure that changes are visible to other processors in the desired order, use memory barriers (or “fences”); the interlocked functions provide a memory barrier, as do all the synchronization functions in this chapter
+        - Even the `volatile` modifier does not assure that changes are visible to other processors in a specific order, because a processor might hold the value in **cache** before committing it to main memory and alter the order in which different processes see the changed values.
+        - To assure that changes are visible to other processors in the desired order, use memory barriers (or “fences”); the **interlocked functions** provide a memory barrier, as do all the synchronization functions in this chapter.
 - Summary:
-    - Variables that are local to the thread should not be global and should be on the thread’s stack or in a data structure or TLS that only the individual thread can access directly.
-    - Threads should not, in general, change the process environment because that would affect all threads.
+    - Variables that are local to the thread should not be global and should be on the thread’s stack or in a data structure or **TLS** that only the individual thread can access directly.
+    - Threads should not, in general, **change the process environment** because that would affect all threads.
     - Variables shared by all threads should be `static` or in global storage and protected with the synchronization or interlocked mechanisms that create a memory barrier.
 
 ## Critical Sections
@@ -89,3 +89,22 @@ powerful than semaphores.
 
 - The function `MsgWaitForMultipleObjects` is similar to `WaitForMultipleObjects`.
 - :brain: Use this function to allow a thread to process **user interface events**, such as mouse clicks, while waiting on synchronization objects.
+
+## ⚠️ More Mutex and CS Guidelines
+
+- If `WaitForSingleObject` times out waiting for a mutex, **do not access** the resources that the mutex is designed to protect.
+- Do not assume that any particular thread (waiting on a given locked mutex) will have **priority** and will be the one released; as always, program so that your app will operate correctly regardless of **which waiting thread** gains mutex ownership and resumes execution.
+- **Large critical code regions**, locked for a long period of time, defeat concurrency and can impact performance.
+- Avoid complex **conditional code** and avoid **premature exits**, such as *break*, *return* and *goto* statements, from within the critical code region. **Termination handlers** are useful for protecting against such problems.
+
+## More Interlocked Functions
+
+- Allow you to perform atomic operations to compare and exchange variable pairs.
+- Efficient; they are implemented in **user space** using **atomic machine instructions**.
+
+## Memory Management Performance Considerations
+
+- `malloc` and `free` from the Standard C library uses functions **synchronize** access to a **heap** data structure => 👎 Potential performance impact.
+- To improve memory management performance, each thread that performs memory management can create a `HANDLE` to its own
+heap using `HeapCreate`. Memory allocation is then performed using `HeapAlloc` and `HeapFree` rather than using `malloc` and
+`free` .
