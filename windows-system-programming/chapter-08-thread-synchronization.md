@@ -101,10 +101,11 @@ powerful than semaphores.
 
 - Allow you to perform atomic operations to compare and exchange variable pairs.
 - Efficient; they are implemented in **user space** using **atomic machine instructions**.
+- Without the `lock` prefix, the operation is guaranteed to be atomic only on the current processor.
 
 ## Memory Management Performance Considerations
 
 - `malloc` and `free` from the Standard C library uses functions **synchronize** access to a **heap** data structure => 👎 Potential performance impact.
 - To improve memory management performance, each thread that performs memory management can create a `HANDLE` to its own
 heap using `HeapCreate`. Memory allocation is then performed using `HeapAlloc` and `HeapFree` rather than using `malloc` and
-`free` .
+`free`.

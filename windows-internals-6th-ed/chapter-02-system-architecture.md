@@ -134,8 +134,17 @@
   - Functions that are defined as **global symbols** but are not exported.
     - `Iop` (internal I/O manager support functions) or `Mi` (internal memory management support functions)
   - Functions that are internal to a module that are not defined as global symbols.
-- The executive contains the following major components, each of which is covered in detail in a
-  subsequent chapter of this book: - **configuration manager**: responsible for implementing and managing the system registry. - **process manager** creates and terminates processes and threads. The underlying support for processes and threads is implemented in the Windows kernel; the executive adds additional semantics and functions to these lower-level objects. - **security reference monitor** enforces security policies on the local computer. It guards operating system resources, performing run-time object protection and auditing. - **I/O manager** implements device-independent I/O and is responsible for dispatching to the appropriate device drivers for further processing. - **Plug and Play (PnP)** manager determines which drivers are required to support a particular device and loads those drivers. - **power manager** coordinates power events and generates power management I/O notifications to device drivers. - **Windows Driver Model Windows Management Instrumentation routines** enable device drivers to publish performance and configuration information and receive commands from the user-mode WMI service. - **cache manager** improves the performance of file-based I/O by causing recently referenced disk data to reside in main memory for quick access. - **memory manager** implements virtual memory, a memory management scheme that provides a large, private address space for each process that can exceed available physical memory. - **logical prefetcher** and **Superfetch** accelerate system and process startup by optimizing the loading of data referenced during the startup of the system or a process.
+- The executive contains the following major components, each of which is covered in detail in a subsequent chapter of this book:
+  - **configuration manager**: responsible for implementing and managing the system registry.
+  - **process manager** creates and terminates processes and threads. The underlying support for processes and threads is implemented in the Windows kernel; the executive adds additional semantics and functions to these lower-level objects.
+  - **security reference monitor** enforces security policies on the local computer. It guards operating system resources, performing run-time object protection and auditing.
+  - **I/O manager** implements device-independent I/O and is responsible for dispatching to the appropriate device drivers for further processing.
+  - **Plug and Play (PnP)** manager determines which drivers are required to support a particular device and loads those drivers.
+  - **power manager** coordinates power events and generates power management I/O notifications to device drivers.
+  - **Windows Driver Model Windows Management Instrumentation routines** enable device drivers to publish performance and configuration information and receive commands from the user-mode WMI service.
+  - **cache manager** improves the performance of file-based I/O by causing recently referenced disk data to reside in main memory for quick access.
+  - **memory manager** implements virtual memory, a memory management scheme that provides a large, private address space for each process that can exceed available physical memory.
+  - **logical prefetcher** and **Superfetch** accelerate system and process startup by optimizing the loading of data referenced during the startup of the system or a process.
 - Additionally, the executive contains four main groups of support functions that are used by the executive components just listed. About a third of these support functions are documented in the WDK because device drivers also use them. These are the four categories of support functions:
   - **object manager** which creates, manages, and deletes Windows executive objects and abstract data types that are used to represent operating system resources such as processes, threads, and the various synchronization objects.
   - **advanced LPC facility** (ALPC): passes messages between a client process and a server process on the same computer. Among other things, ALPC is used as a local transport for remote procedure call (RPC), an industry-standard communication facility for client and server processes across a network.
@@ -155,10 +164,10 @@
 
 ### Kernel
 
-- consists of a set of functions in `Ntoskrnl.exe` that provides fundamental mechanisms such as:
-  - **thread scheduling** and **synchronization services** used by the executive components, as well as low-level hardware architecture–dependent support (such as **interrupt and exception dispatching** that is different on each processor architecture.
-  - written mostly in C + assembly for specialized processor instructions.
-  - expose many functions documented in the WDK (Ke).
+- Consists of a set of functions in `Ntoskrnl.exe` that provides fundamental mechanisms such as:
+  - **thread scheduling** and **synchronization services** used by the executive components, as well as low-level hardware architecture–dependent support (such as **interrupt and exception dispatching**) that is different on each processor architecture.
+  - Written mostly in C + assembly for specialized processor instructions.
+  - Expose many functions documented in the WDK (Ke).
 
 ### Kernel Objects
 

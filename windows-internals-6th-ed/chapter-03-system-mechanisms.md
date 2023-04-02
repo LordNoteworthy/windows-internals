@@ -478,8 +478,6 @@ and then decrements a counter that tracks how long the current thread has run. W
 
 ### System Service Dispatching
 
-#### System Service Dispatching
-
 - On x86 processors prior to the *Pentium II*, Windows uses the `int 0x2e` instruction, which results in a trap. Windows fills in entry 46 in the IDT to point to the system service dispatcher.
 - The trap causes the executing thread to transition into kernel mode and enter the system service dispatcher.
 - `EAX` register indicates the **system service number** being requested.
@@ -591,3 +589,58 @@ lkd> dq nt!KiServiceTable
 	fffff800'01a73b00  02f6f000'04106900 031a0105'fff72d00
 ```
 </details>
+
+...
+
+## Synchronization
+
+- The concept of **mutual exclusion** is a crucial one in OS development It refers to the guarantee that one, and only one, thread can access a particular resource at a time.
+- Resources that aren’t subject to **modification** can be shared without worrying about synchronization.
+- Developers have to worry about shared data in multi-threading program even in **single-processor** system.
+
+### High-IRQL Synchronization
+
+- Before using a global resource, the kernel **temporarily masks** the interrupts whose interrupt handlers also use the resource.
+- It does so by **raising** the processor’s IRQL to the highest level used by any potential interrupt source that accesses the global data.
+- 🤷‍♂️ This strategy is fine for a **single-processor** system, but it’s inadequate for a **multiprocessor** configuration.
+    - Raising the IRQL on one processor doesn’t prevent an interrupt from occurring on another processor.
+
+#### Interlocked Operations
+
+- Rely on **hardware** support for multiprocessor safe manipulation of integer values and for performing comparisons.
+
+#### Spinlocks
+
+- The mechanism the kernel uses to achieve multiprocessor mutual exclusion is called a **spinlock**.
+- Before entering a critical code region, the kernel must acquire the spinlock.
+    - If the spinlock isn’t free, the kernel keeps trying to acquire the lock until it succeeds.
+    - The spinlock gets its name from the fact that the kernel (and thus, the processor) waits, *spinning* until it gets the lock.
+- Are implemented with a hardware-supported *test-and-set* operation, which tests the value of a lock variable and acquires the lock in one **atomic** instruction.
+
+<details><summary>All kernel-mode spinlocks in Windows have an associated IRQL that is always **DPC/dispatch** level or higher. 🚩</summary>
+
+-  When a thread is trying to acquire a spinlock, all other activity at the spinlock’s IRQL or lower ceases on that processor.
+    - Because thread dispatching happens at DPC/dispatch level, a thread that holds a spinlock is **never preempted** because the IRQL masks the dispatching mechanisms.
+    - This masking allows code executing in a critical section protected by a spinlock to **continue executing** so that it will release the lock quickly.
+    - Any processor that attempts to acquire the spinlock will essentially be busy, waiting indefinitely, **consuming power** (a busy wait results in 100% CPU usage 😣) and performing no actual work.
+    - 👍 In x86/x64, the `PAUSE` asm instruction can be inserted in busy wait loops to offer a hint to the processor that the loop instructions it is processing are part of a spinlock (or a similar construct) acquisition loop.
+</details>
+
+- The kernel provides a set of kernel functions including: `KeAcquireSpinLock` and `KeReleaseSpinLock`.
+- The kernel also exports the `KeAcquireInterruptSpinLock` and `KeReleaseInterruptSpinLock` for device drivers, because raising the IRQL only to DPC/dispatch level this isn’t enough to protect against **interrupts**.
+- Devices can use the `KeSynchronizeExecution` API to synchronize an entire function with an ISR, instead of just a critical section.
+- ⚠️ Because spinlocks always have an IRQL of DPC/dispatch +, code holding a spinlock will crash the system if it attempts to make the **scheduler perform a dispatch operation** or if it causes a **page fault**.
+
+#### Queued Spinlocks
+
+- To increase the scalability of spinlocks, a special type of spinlock, called a **queued spinlock**, is used in most circumstances instead of a standard spinlock.
+    - When a processor wants to acquire a queued spinlock (`KeAcquireQueuedSpinLock`) that is currently held, it places its identifier in a **queue** associated with the spinlock.
+    - When the processor that’s holding the spinlock **releases** it, it hands the lock over to the **first processor** identified in the queue.
+    - In the meantime, a processor waiting for a busy spinlock checks the status not of the **spinlock itself** but of a **per-processor flag** that the processor ahead of it in the queue sets to indicate that the waiting processor’s turn has arrived.
+    - 👍 The multiprocessor’s bus isn’t as **heavily trafficked** by interprocessor synchronization.
+    - 👍 Enforces **FIFO** ordering to the lock. FIFO ordering means more **consistent performance** across processors accessing the same locks.
+- 💁 These locks are reserved for the kernel’s own internal use. Device drivers should use **Instack Queued Spinlocks**.
+- Device drivers can use dynamically allocated queued spinlocks with the `KeAcquireInStackQueuedSpinLock` and `KeReleaseInStackQueuedSpinLock` functions.
+
+#### Executive Interlocked Operations
+
