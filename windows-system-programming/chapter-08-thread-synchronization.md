@@ -101,7 +101,6 @@ powerful than semaphores.
 
 - Allow you to perform atomic operations to compare and exchange variable pairs.
 - Efficient; they are implemented in **user space** using **atomic machine instructions**.
-- Without the `lock` prefix, the operation is guaranteed to be atomic only on the current processor.
 
 ## Memory Management Performance Considerations
 

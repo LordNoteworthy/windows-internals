@@ -616,6 +616,7 @@ lkd> dq nt!KiServiceTable
     - If the spinlock isn’t free, the kernel keeps trying to acquire the lock until it succeeds.
     - The spinlock gets its name from the fact that the kernel (and thus, the processor) waits, *spinning* until it gets the lock.
 - Are implemented with a hardware-supported *test-and-set* operation, which tests the value of a lock variable and acquires the lock in one **atomic** instruction.
+- Additionally, the `lock` instruction can also be used on the *test-and-set* operation, resulting in the combined `lock bts` assembly operation, which also locks the **multiprocessor bus**; otherwise, it would be possible for more than one processor to atomically perform the operation.
 
 <details><summary>All kernel-mode spinlocks in Windows have an associated IRQL that is always **DPC/dispatch** level or higher. 🚩</summary>
 
@@ -642,5 +643,22 @@ lkd> dq nt!KiServiceTable
 - 💁 These locks are reserved for the kernel’s own internal use. Device drivers should use **Instack Queued Spinlocks**.
 - Device drivers can use dynamically allocated queued spinlocks with the `KeAcquireInStackQueuedSpinLock` and `KeReleaseInStackQueuedSpinLock` functions.
 
-#### Executive Interlocked Operations
+### Low-IRQL Synchronization
 
+- Because waiting for a spinlock literally **stalls a processor**, spinlocks can be used only under the following strictly limited circumstances:
+    - The protected resource must be accessed **quickly** and without complicated interactions with other code
+    - The critical section code can’t be **paged out of memory**, can’t make references to **pageable data**, can’t call **external procedures** (including system services), and can’t generate interrupts or exceptions.
+- The following Kernel Synchronization Mechanisms are available for Kernel mode:
+<p align="center"><img src="./assets/kernel-synchronization-mechanisms.png" width="400px" height="auto"></p>
+
+#### Kernel Dispatcher Objects
+
+- The kernel furnishes additional synchronization mechanisms to the executive in the form of kernel objects, known collectively as **dispatcher objects**.
+- Each Windows API-visible object that supports synchronization **encapsulates** at least one kernel dispatcher object.
+- The executive’s synchronization semantics are visible to Windows programmers through the `WaitForSingleObject` and `WaitForMultipleObjects` functions, which the Windows subsystem implements by calling analogous system services that the object manager supplies.
+
+### Waiting for Dispatcher Objects
+
+- A thread can synchronize with a dispatcher object by waiting for the object’s handle. Doing so causes the kernel to put the thread in a **wait state**.
+- At any given moment, a synchronization object is in one of two states: **signaled state** or **nonsignaled state**.
+- A thread can’t resume its execution until its wait is satisfied, a condition that occurs when the dispatcher object whose handle the thread is waiting for also undergoes a state change, from the nonsignaled state to the signaled state.
