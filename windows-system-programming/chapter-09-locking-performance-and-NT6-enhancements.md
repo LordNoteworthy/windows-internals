@@ -15,7 +15,7 @@
     - The alignment implementation uses the `__declspec(align)` modifier on the structure definition and the `_aligned_malloc` and `_aligned_free` memory management calls (all are Microsoft extensions).
     - The cache alignment is to avoid a **false-sharing** performance bug, as described after the program listing.
 
-<p align="center"><img src="./assets/performance_with_different_locking_techniques.png" width="400px" height="auto"></p>
+<p align="center"><img src="./assets/performance_with_different_locking_techniques.png" width="600px" height="auto"></p>
 
 <include >
 
@@ -26,7 +26,7 @@
 - For instance, table below shows the elapsed and times (seconds) for 64 threads and 256,000 work units on 1-, 2-, 4-, and 8-processor systems.
     - 🧠 CS performance, however, improves with **processor count** and **clock rate**.
 
-<p align="center"><img src="./assets/mutex_and_cs_performance_with_multiple_processors.png" width="200px" height="auto"></p>
+<p align="center"><img src="./assets/mutex_and_cs_performance_with_multiple_processors.png" width="400px" height="auto"></p>
 
 ### False Sharing
 

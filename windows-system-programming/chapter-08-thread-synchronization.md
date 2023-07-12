@@ -1,7 +1,10 @@
-# Chapter 08: Thread Synchronization
+# Chapter 8: Thread Synchronization
 
-- The big problem:
-    - We need to synchronize thread execution in order to ensure that only one thread at a time executes any of the **critical regions** for a data item.
+- Before going over this chapter, best way to think of signaled vs non-signaled thread:
+
+<p align="center"><img src="./assets/signaled-vs-unsignaled.png" width="400px" height="auto"></p>
+
+- The big problem: We need to synchronize thread execution in order to ensure that only one thread at a time executes any of the **critical regions** for a data item.
 - Defective workaround:
     - Give each thread its own copy of the variable.
     - But: ⚠️ An optimizing compiler might leave the value of `N` in a register rather than storing it back in `N`.
@@ -17,7 +20,7 @@
 
 - Threads enter and leave a CS, and only one thread at a time can be in a specific CS.
 - `CRITICAL_SECTION` (CS) objects are initialized and deleted but do not have **handles** and are not **shared** with other **processes**.
-- Always be certain to leave a CS; failure to do so will cause other threads to wait forever, even if the **owning thread terminates**.
+- ⚠️ Always be certain to leave a CS; failure to do so will cause other threads to wait forever, even if the **owning thread terminates**.
 - CS are **recursive**.
 - CS have the advantage of **not being kernel objects** and are maintained in user space. This almost always provides performance improvements compared to using a Windows `mutex` kernel object with similar functionality.
 - Waiting for a CS to be released is *time consuming*. On MP systems, you can require that the thread try again (that is, **spin**) before blocking, as the owning thread may be running on a separate processor and could release the CS at any time.
@@ -104,7 +107,8 @@ powerful than semaphores.
 
 ## Memory Management Performance Considerations
 
-- `malloc` and `free` from the Standard C library uses functions **synchronize** access to a **heap** data structure => 👎 Potential performance impact.
+- `malloc` and `free` from the Standard C library uses functions **synchronize** access to a **heap** data structure.
+    - 👎 Potential performance impact.
 - To improve memory management performance, each thread that performs memory management can create a `HANDLE` to its own
 heap using `HeapCreate`. Memory allocation is then performed using `HeapAlloc` and `HeapFree` rather than using `malloc` and
 `free`.

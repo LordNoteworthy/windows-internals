@@ -474,7 +474,9 @@ and then decrements a counter that tracks how long the current thread has run. W
 - In default configured systems, an error report (a minidump and an XML file with various details) is sent to Microsoft’s online crash analysis server.
 - WER performs this work **externally** from the **crashed thread** if the unhandled exception filter itself crashes, which allows any kind of process or thread crash to be logged and for the user to be notified.
 - WER service uses an ALPC port for communicating with crashed processes. This mechanism uses a systemwide error port that the WER service registers through `NtSetInformationProcess` (which uses `DbgkRegisterErrorPort`). As a result, all Windows processes now have an error port that is actually an ALPC port object registered by the WER service.
-- Foldable.: The kernel, which is first notified of an exception, uses this port to send a message to the WER service, which then analyzes the crashing process. This means that even in severe cases of thread state damage, WER will still be able to receive notifications and launch WerFault.exe to display a user interface instead of having to do this work within the crashing thread itself . Additionally, WER will be able to generate a crash dump for the process, and a message will be written to the Event Log. This solves all the problems of silent process death: users are notified, debugging can occur, and service administrators can see the crash event.
+<details><summary>More details:</summary>
+The kernel, which is first notified of an exception, uses this port to send a message to the WER service, which then analyzes the crashing process. This means that even in severe cases of thread state damage, WER will still be able to receive notifications and launch WerFault.exe to display a user interface instead of having to do this work within the crashing thread itself. Additionally, WER will be able to generate a crash dump for the process, and a message will be written to the Event Log. This solves all the problems of silent process death: users are notified, debugging can occur, and service administrators can see the crash event.
+</details>
 
 ### System Service Dispatching
 
@@ -483,7 +485,8 @@ and then decrements a counter that tracks how long the current thread has run. W
 - `EAX` register indicates the **system service number** being requested.
 - `EDX` register points to the **list of parameters** the caller passes to the system service.
 - To return to user mode, the system service dispatcher uses the `iret` (interrupt return instruction).
-- On x86 *Pentium II*+, Windows uses the `sysenter` instruction, which Intel defined specifically for **fast system service dispatches**. 	- To support the instruction, Windows stores at boot time the **address** of the kernel’s **system service dispatcher** routine in a **machine-specific register** (MSR) associated with the instruction.
+- On x86 *Pentium II*+, Windows uses the `sysenter` instruction, which Intel defined specifically for **fast system service dispatches**.
+    - To support the instruction, Windows stores at boot time the **address** of the kernel’s **system service dispatcher** routine in a **machine-specific register** (MSR) associated with the instruction.
 	- EAX and EDX plays the same role as for the INT instruction.
 	- To return to user mode, the system service dispatcher usually executes the `sysexit` instruction.
 	- (In some cases, like when the **single-step flag** is enabled on the processor, the system service dispatcher uses the `iret` instead because `sysexit` does not allow returning to user-mode with a different `EFLAGS` register, which is needed if `sysenter` was executed while the trap flag was set as a result of a **user-mode debugger** tracing or stepping over a system call.)
@@ -497,20 +500,20 @@ and then decrements a counter that tracks how long the current thread has run. W
    Dumping IDT:
    2e:    8208c8ee nt!KiSystemService
  ```
-2. To see the handler for the `sysenter` version, use the `rdmsr` debugger command to read from the MSR register 0x176, which stores the handler:
+- To see the handler for the `sysenter` version, use the `rdmsr` debugger command to read from the MSR register 0x176, which stores the handler:
 ```c
    lkd> rdmsr 176
-   msr[176] = 00000000'8208c9c0
+   msr[176] = 000000008208c9c0
 
-    lkd> ln 00000000'8208c9c0
+    lkd> ln 000000008208c9c0
            (8208c9c0)   nt!KiFastCallEntry
 ```
 - If you have a 64-bit machine, you can look at the service call dispatcher by using the `0xC0000082` MSR instead. You will see it corresponds to `nt!KiSystemCall64`:
 ```c
    lkd> rdmsr c0000082
-   msr[c0000082] = fffff800'01a71ec0
-   lkd> ln fffff800'01a71ec0
-   (fffff800'01a71ec0)   nt!KiSystemCall64
+   msr[c0000082] = fffff80001a71ec0
+   lkd> ln fffff80001a71ec0
+   (fffff80001a71ec0)   nt!KiSystemCall64
  ```
 - You can disassemble the `KiSystemService` or `KiSystemCall64` routine. On a 32-bit system, you’ll eventually notice the following instructions:
 ```c
@@ -525,7 +528,8 @@ and then decrements a counter that tracks how long the current thread has run. W
 0:000> u ntdll!NtReadFile
 ntdll!ZwReadFile:
 77020074 b802010000		mov     eax,102h
-77020079 ba0003fe7f		mov     edx,offset SharedUserData!SystemCallStub (7ffe0300) // system service dispatch code SystemCallStub member 											// of the KUSER_SHARED_DATA
+77020079 ba0003fe7f		mov     edx,offset SharedUserData!SystemCallStub (7ffe0300) // system service dispatch code SystemCallStub member
+                                                                                    // of the KUSER_SHARED_DATA
 7702007e ff12			call    dword ptr [edx]
 77020080 c22400			ret 	24h
 77020083 90				nop
@@ -533,10 +537,10 @@ ntdll!ZwReadFile:
 - Because 64-bit systems have only one mechanism for performing system calls, the system service entry points in *Ntdll.dll* use the syscall instruction directly:
 ```c
 ntdll!NtReadFile:
-00000000'77f9fc60 4c8bd1
-00000000'77f9fc63 b810200000
-00000000'77f9fc68 0f05             syscall
-00000000'77f9fc6a c3               ret
+0000000077f9fc60 4c8bd1
+0000000077f9fc63 b810200000
+0000000077f9fc68 0f05             syscall
+0000000077f9fc6a c3               ret
 ```
 </details>
 
