@@ -673,7 +673,7 @@ lkd> dq nt!KiServiceTable
 <p align="center"><img src="./assets/definition-of-signaled-state.png" width="700px" height="auto"></p>
 
 - Whether a thread’s wait ends when an object is set to the signaled state varies with the type of object the thread is waiting for:
-<p align="center"><img src="./assets/selected-kernel-dispatcher-objects.png" width="700px" height="auto"></p>
+<p align="center"><img src="./assets/selected-kernel-dispatcher-objects.png" height="auto"></p>
 
 - When an object is set to the **signaled** state, **waiting** threads are generally **released** from their wait states immediately.
 
@@ -700,3 +700,124 @@ lkd> dq nt!KiServiceTable
     - it is possible and likely that the thread attempting to commit its wait has experienced a change while its wait was still in progress, this causes the associated wait block to enter the **WaitBlockBypassStart** state, and the thread’s wait status register now shows the **WaitAborted** wait state.
     - Another possible scenario is for an alert or `APC` to have been issued to the waiting thread, which does not set the **WaitAborted** state but enables one of the corresponding bits in the wait status register. Because **APCs can break waits** (depending on the type of APC, wait mode, and alertability), the APC is delivered and the wait is **aborted**. Other operations that will modify the wait status register without generating a full abort cycle include **modifications** to the **thread’s priority** or **affinity**, which will be processed when exiting the wait due to failure to commit, as with the previous cases mentioned.
 
+### :telescope: Looking at Wait Queues
+
+- You can see the list of objects a thread is waiting for with the kernel debugger’s `!process` command:
+
+```c
+kd> !process
+THREAD fffffa8005292060 Cid 062c062c.0660 Teb: 000007fffffde000 Win32Thread:
+fffff900c01c68f0 WAIT: (WrUserRequest) UserMode Non-Alertable
+fffffa80047b8240 SynchronizationEvent
+```
+<details><summary>You can use the dt command to interpret the dispatcher header of the object like this:</summary>
+
+```c
+lkd> dt nt!_DISPATCHER_HEADER fffffa80047b8240
++0x000 Type : 0x1 ''
++0x001 TimerControlFlags : 0 ''
++0x001 Absolute : 0y0
++0x001 Coalescable : 0y0
++0x001 KeepShifting : 0y0
++0x001 EncodedTolerableDelay : 0y00000 (0)
++0x001 Abandoned : 0 ''
++0x001 Signalling : 0 ''
++0x002 ThreadControlFlags : 0x6 ''
++0x002 CpuThrottled : 0y0
++0x002 CycleProfiling : 0y1
++0x002 CounterProfiling : 0y1
++0x002 Reserved : 0y00000 (0)
++0x002 Hand : 0x6 ''
++0x002 Size : 0x6
++0x003 TimerMiscFlags : 0 ''
++0x003 Index : 0y000000 (0)
++0x003 Inserted : 0y0
++0x003 Expired : 0y0
++0x003 DebugActive : 0 ''
++0x003 ActiveDR7 : 0y0
++0x003 Instrumented : 0y0
++0x003 Reserved2 : 0y0000
++0x003 UmsScheduled : 0y0
++0x003 UmsPrimary : 0y0
++0x003 DpcActive : 0 ''
++0x000 Lock : 393217
++0x004 SignalState : 0
++0x008 WaitListHead : _LIST_ENTRY [ 0xfffffa80'047b8248 - 0xfffffa80'047b8248 ]
+```
+</details>
+
+- Apart from these flags, the `Type` field contains the identifier for the object. This identifier corresponds to a number in the `KOBJECTS` enumeration.
+<details><summary>Which you can dump with the debugger like this:</summary>
+
+```c
+lkd> dt nt!_KOBJECTS
+
+EventNotificationObject = 0
+EventSynchronizationObject = 1
+MutantObject = 2
+ProcessObject = 3
+QueueObject = 4
+SemaphoreObject = 5
+ThreadObject = 6
+GateObject = 7
+TimerNotificationObject = 8
+TimerSynchronizationObject = 9
+Spare2Object = 10
+Spare3Object = 11
+Spare4Object = 12
+Spare5Object = 13
+Spare6Object = 14
+Spare7Object = 15
+Spare8Object = 16
+Spare9Object = 17
+ApcObject = 18
+DpcObject = 19
+DeviceQueueObject = 20
+EventPairObject = 21
+InterruptObject = 22
+ProfileObject = 23
+ThreadedDpcObject = 24
+MaximumKernelObject = 25
+```
+</details>
+
+- When the wait list head pointers are **identical**, there are either **zero** threads or one **thread** waiting on this object. Dumping a wait block for an object that is part of a multiple wait from a thread, or that multiple threads are waiting on, can yield the following:
+
+```c
+dt nt!_KWAIT_BLOCK 0xfffffa80'053cf628
++0x000 WaitListEntry : _LIST_ENTRY [ 0xfffffa80'02efe568 - 0xfffffa80'02803468 ]
++0x010 Thread : 0xfffffa80'053cf520 _KTHREAD
++0x018 Object : 0xfffffa80'02803460
++0x020 NextWaitBlock : 0xfffffa80'053cf628 _KWAIT_BLOCK
++0x028 WaitKey : 0
++0x02a WaitType : 0x1 ''
++0x02b BlockState : 0x2 ''
++0x02c SpareLong : 8
+```
+
+### Keyed Events
+
+- Keyed events (which are not documented) were originally implemented to help processes deal with **low-memory** situations when using critical sections (CS).
+- They were added to Windows XP as a new kernel object type, and there is always **one global event** `\KernelObjects\CritSecOutOfMemoryEvent`, shared among all processes.
+- The implementation of keyed events allows multiple CS (waiters) to use the same **global (per-process) keyed event** handle. This allows the CS functions to operate properly even when memory is temporarily low.
+- When a thread waits on or sets the event, they specify a **key**. This key is just a **pointer-sized value**, and represents a unique identifier for the event in question.
+    - When a thread sets an event for key `K`, only a single thread that has begun waiting on `K` is woken (like an auto-reset event). Only waiters in the current process are woken, so `K` is effectively isolated between processes although there’s a global event. `K` is most often just a memory address. And there you go: you have an arbitrarily large number of events in the process (bounded by the addressable bytes in the system), but without the cost of allocating a true event object for each one.
+- However, keyed events are more than just fallback objects for low-memory conditions, a thread can signal a keyed event **without** any threads on the **waiter list**.
+    - In this scenario, the signaling thread instead waits on the **event itself**. Without this fallback, a signaling thread could signal the keyed event during the time that the usermode code saw the keyed event as unsignaled and attempt a wait.
+    - The wait might have come after the signaling thread signaled the keyed event, resulting in a **missed pulse**, so the waiting thread would deadlock.
+    - By forcing the signaling thread to wait in this scenario, it actually signals the keyed event only when **someone is looking** (waiting).
+
+### Fast Mutexes and Guarded Mutexes
+
+- **Fast mutexes**, which are also known as *executive mutexes*, usually offer better **performance** than mutex objects because, although they are built on **dispatcher event** objects, they perform a wait through the dispatcher only if the fast mutex is **contended** — unlike a standard mutex, which always attempts the acquisition through the dispatcher.
+- :warning: Fast mutexes limitations:
+    - suitable only when normal kernel-mode APC delivery can be **disabled**.
+    - can’t be acquired **recursively**, like mutex objects can.
+- **Guarded mutexes** are essentially the same as fast mutexes (although they use a different
+synchronization object, the `KGATE`, internally).
+    - but instead of disabling APCs by raising the IRQL to APC level, they disable all kernel-mode APC delivery by calling `KeEnterGuardedRegion`.
+    - Recall that a **guarded region**, unlike a critical region, **disables both special and normal kernel-mode APCs**, which allows the guarded mutex to avoid raising the IRQL.
+- Three differences make guarded mutexes **faster** than fast mutexes:
+    - By avoiding raising the IRQL, the kernel can avoid talking to the local `APIC` of every processor on the bus, which is a significant operation on large SMP systems. On uni-processor systems, this isn’t a problem because of lazy IRQL evaluation, but lowering the IRQL might still require accessing the `PIC`.
+    - The gate primitive is an **optimized** version of the **event**. By not having both synchronization and notification versions and by being the exclusive object that a thread can wait on, the code for acquiring and releasing a gate is **heavily optimized**. Gates even have their own dispatcher lock instead of acquiring the entire dispatcher database.
+    - In the **non-contended** case, the acquisition and release of a guarded mutex works on a single bit, with an atomic bit test-and-reset operation instead of the more complex integer operations fast mutexes perform.
