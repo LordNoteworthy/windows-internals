@@ -158,7 +158,7 @@ Inti17.: 00000000`000100ff  Vec:FF  FixedDel  Ph:00000000      edg high      m
 - IRQLs are also used to __synchronize__ access to kernel-mode data structures. As a kernel-mode thread runs, it raises or lowers the processor’s IRQL either directly by calling `KeRaiseIrql` and `KeLowerIrql` or, more commonly, indirectly via calls to functions that acquire kernel synchronization objects.
 - For example, when an interrupt occurs, the trap handler (or perhaps the processor) raises the processor’s IRQL to the assigned IRQL of the interrupt source. This elevation __masks__ all interrupts __at and below that IRQL__ (on that processor only), which ensures that the processor servicing the interrupt isn’t waylaid by an interrupt at the __same level or a lower level__. The masked interrupts are either handled by another processor or held back until the IRQL drops. Therefore, all components of the system, including the kernel and device drivers, attempt to __keep the IRQL at passive level__ (sometimes called low level). They do this because device drivers can respond to hardware interrupts in a timelier manner if the IRQL isn’t kept __unnecessarily elevated for long periods__.
 -  > :bangbang: An exception to the rule that raising the IRQL blocks interrupts of that level and lower relates to APC-level interrupts If a thread raises the IRQL to APC level and then is rescheduled because of a dispatch/DPC-level interrupt, the system might deliver an APC-level interrupt to the newly scheduled thread Thus, APC level can be considered a thread-local rather than processor-wide IRQL.
--  Processor’s IRQL is always at __passive level__ when it’s executing usermode code. Only when the processor is executing kernel-mode code can the IRQL be higher.
+- Processor’s IRQL is always at __passive level__ when it’s executing usermode code. Only when the processor is executing kernel-mode code can the IRQL be higher.
 
 #### Mapping Interrupts to IRQLs
 
@@ -622,7 +622,7 @@ lkd> dq nt!KiServiceTable
 - Are implemented with a hardware-supported *test-and-set* operation, which tests the value of a lock variable and acquires the lock in one **atomic** instruction.
 - Additionally, the `lock` instruction can also be used on the *test-and-set* operation, resulting in the combined `lock bts` assembly operation, which also locks the **multiprocessor bus**; otherwise, it would be possible for more than one processor to atomically perform the operation.
 
-<details><summary>All kernel-mode spinlocks in Windows have an associated IRQL that is always **DPC/dispatch** level or higher. 🚩</summary>
+<details><summary>All kernel-mode spinlocks in Windows have an associated IRQL that is always DPC/dispatch level or higher. 🚩</summary>
 
 -  When a thread is trying to acquire a spinlock, all other activity at the spinlock’s IRQL or lower ceases on that processor.
     - Because thread dispatching happens at DPC/dispatch level, a thread that holds a spinlock is **never preempted** because the IRQL masks the dispatching mechanisms.
@@ -653,7 +653,7 @@ lkd> dq nt!KiServiceTable
     - The protected resource must be accessed **quickly** and without complicated interactions with other code
     - The critical section code can’t be **paged out of memory**, can’t make references to **pageable data**, can’t call **external procedures** (including system services), and can’t generate interrupts or exceptions.
 - The following Kernel Synchronization Mechanisms are available for Kernel mode:
-<p align="center"><img src="./assets/kernel-synchronization-mechanisms.png" width="400px" height="auto"></p>
+<p align="center"><img src="./assets/kernel-synchronization-mechanisms.png" width="700px" height="auto"></p>
 
 #### Kernel Dispatcher Objects
 
@@ -666,3 +666,37 @@ lkd> dq nt!KiServiceTable
 - A thread can synchronize with a dispatcher object by waiting for the object’s handle. Doing so causes the kernel to put the thread in a **wait state**.
 - At any given moment, a synchronization object is in one of two states: **signaled state** or **nonsignaled state**.
 - A thread can’t resume its execution until its wait is satisfied, a condition that occurs when the dispatcher object whose handle the thread is waiting for also undergoes a state change, from the nonsignaled state to the signaled state.
+
+### What Signals an Object?
+
+- The signaled state is defined differently for different objects
+<p align="center"><img src="./assets/definition-of-signaled-state.png" width="700px" height="auto"></p>
+
+- Whether a thread’s wait ends when an object is set to the signaled state varies with the type of object the thread is waiting for:
+<p align="center"><img src="./assets/selected-kernel-dispatcher-objects.png" width="700px" height="auto"></p>
+
+- When an object is set to the **signaled** state, **waiting** threads are generally **released** from their wait states immediately.
+
+### Data Structures
+
+- Three data structures are key to tracking **who is waiting**, **how they are waiting**, **what they are waiting for**, and **which state the entire wait operation is at**. These three structures are the *dispatcher header*, the *wait block*, and the *wait status register*.
+- The **dispatcher header** is a packed structure because it needs to hold lots of information in a fixed-size structure.
+    - It contains some fields which applies only to some specific dispatcher object ;
+    - but it also contain information generic for any dispatcher object: the object type, signaled state, and a list of the threads waiting for that object.
+- The **wait block** represents a thread waiting for an object:
+    - Each thread that is in a wait state has a **list of the wait blocks** that represent the objects the thread is waiting for.
+    - Each dispatcher object has a list of the wait blocks that represent **which threads** are waiting for the **object**.
+    - The wait block has a pointer to the object being waited for, a pointer to the thread waiting for the object, and a pointer to the next wait block (if the thread is waiting for more than one object).
+-The wait block also contains a volatile **wait block state**, which defines the current state of this wait block in the transactional wait operation it is currently being engaged in.
+<p align="center"><img src="./assets/wait-data-structures.png" width="700px" height="auto"></p>
+
+- An object undergoes a different wait states:
+    - When a thread is instructed to wait for a given object (`WaitForSingleObject()`), it first attempts to enter the in-progress wait state (**WaitInProgress**) by beginning the wait.
+        - If there are no pending alerts to the thread, this operation succeeds.
+        - Otherwise the thread now enters the **WaitInProgress** state.
+    - Once the wait is in progress, the thread can initialize the wait blocks as needed and mark them as **WaitBlockActive** in the process and then proceed to **lock** all the objects that are part of this wait.
+    - The next step is to check for immediate satisfaction of the wait, such as an mutex that has already been released or a timer that already expired, in this cases, the wait is not "satisfied", ▶️ perform a wait exit.
+    - If none of these shortcuts were effective, the wait block is inserted into the thread’s wait list, and the thread now attempts to **commit** its wait.
+    - it is possible and likely that the thread attempting to commit its wait has experienced a change while its wait was still in progress, this causes the associated wait block to enter the **WaitBlockBypassStart** state, and the thread’s wait status register now shows the **WaitAborted** wait state.
+    - Another possible scenario is for an alert or `APC` to have been issued to the waiting thread, which does not set the **WaitAborted** state but enables one of the corresponding bits in the wait status register. Because **APCs can break waits** (depending on the type of APC, wait mode, and alertability), the APC is delivered and the wait is **aborted**. Other operations that will modify the wait status register without generating a full abort cycle include **modifications** to the **thread’s priority** or **affinity**, which will be processed when exiting the wait due to failure to commit, as with the previous cases mentioned.
+

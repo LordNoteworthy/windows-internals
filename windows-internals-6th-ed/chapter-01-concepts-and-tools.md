@@ -66,6 +66,7 @@
   - And uses the other half (the upper half, addresses **0x80000000 through 0xFFFFFFFF**) for its own protected OS memory utilization.
   - Windows supports boot-time options (the `increaseuserva` qualifier in the Boot Configuration Database that give processes running specially marked programs (the large address space aware flag must be set in the header of the executable image) the ability to use up to **3 GB of private address space** (leaving 1 GB for the kernel).
   <p align="center"><img src="./assets/32-bits-address-space-layout.png" width="400px" height="auto"></p>
+
   - Although 3 GB is better than 2 GB, it’s still not enough virtual address space to map very large (multi-gigabyte) databases.
   - To address this need on 32-bit systems, Windows provides a mechanism called **Address Windowing Extension (AWE)**, which allows a 32-bit application to allocate up to **64 GB** of physical memory and then map views, or windows, into its 2-GB virtual address space.
   - Although using AWE puts the burden of managing mappings of virtual to physical memory on the programmer, it does address the need of being able to directly access more physical memory than can be mapped at any one time in a 32-bit process address space.

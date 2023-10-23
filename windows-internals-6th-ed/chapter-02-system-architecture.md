@@ -443,9 +443,9 @@ Times -- Dpc    00000012 Interrupt 00000012
 #### Local Session Manager (Lsm.exe)
 
 - manages the state of terminal server sessions on the local machine.
-- sends requests to Smss through the ALPC port _SmSsWinStationApiPort_ to start new sessions (for example, creating the Csrss and Winlogon processes) such as when a user selects _Switch User from Explorer_
-- Lsm also communicates with Winlogon and Csrss (using a local system RPC)
-- It notifies Csrss of events such as connect, disconnect, terminate, and broadcast system message. It receives notification from Winlogon for the following events:
+- sends requests to `Smss` through the ALPC port _SmSsWinStationApiPort_ to start new sessions (for example, creating the `Csrss` and `Winlogon` processes) such as when a user selects _Switch User from Explorer_
+- `Lsm` also communicates with `Winlogon` and ``Csrss`` (using a local system RPC)
+- It notifies Csrss of events such as connect, disconnect, terminate, and broadcast system message. It receives notification from `Winlogon` for the following events:
   - Logon and logoff
   - Shell start and termination
   - Connect to a session
