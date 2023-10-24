@@ -821,3 +821,61 @@ synchronization object, the `KGATE`, internally).
     - By avoiding raising the IRQL, the kernel can avoid talking to the local `APIC` of every processor on the bus, which is a significant operation on large SMP systems. On uni-processor systems, this isn’t a problem because of lazy IRQL evaluation, but lowering the IRQL might still require accessing the `PIC`.
     - The gate primitive is an **optimized** version of the **event**. By not having both synchronization and notification versions and by being the exclusive object that a thread can wait on, the code for acquiring and releasing a gate is **heavily optimized**. Gates even have their own dispatcher lock instead of acquiring the entire dispatcher database.
     - In the **non-contended** case, the acquisition and release of a guarded mutex works on a single bit, with an atomic bit test-and-reset operation instead of the more complex integer operations fast mutexes perform.
+
+### Executive Resources
+
+- are synchronization mechanism that supports **shared** and **exclusive** access;
+- like fast mutexes, they require that normal kernel-mode `APC` delivery be **disabled** before they are acquired.
+- Threads waiting to acquire an executive resource for **shared** access wait for a **semaphore**
+associated with the resource, and threads waiting to acquire an **executive** resource for exclusive access wait for an **event**.
+
+<details><summary>🔭 Listing Acquired Executive Resources:</summary>
+
+- The kernel debugger `!locks` command searches paged pool for executive resource objects and dumps their state.
+
+```c
+lkd> !locks
+**** DUMP OF ALL RESOURCE OBJECTS ****
+KD: Scanning for held locks.
+Resource @ 0x89929320 Exclusively owned
+Contention Count = 3911396
+Threads: 8952d030-01<*>
+KD: Scanning for held locks.......................................
+Resource @ 0x89da1a68 Shared 1 owning threads
+Threads: 8a4cb533-01<*> *** Actual Thread 8a4cb530
+```
+
+- You can examine the details of a specific resource object, including the thread that owns the resource and any threads that are waiting for the resource, by specifying the `–v` switch and the address of the resource:
+
+```c
+lkd> !locks -v 0x89929320
+Resource @ 0x89929320 Exclusively owned
+Contention Count = 3913573
+Threads: 8952d030-01<*>
+THREAD 8952d030 Cid 0acc.050c Teb: 7ffdf000 Win32Thread: fe82c4c0 RUNNING on processor 0
+Not impersonating
+DeviceMap 9aa0bdb8
+Owning Process 89e1ead8 Image: windbg.exe
+Wait Start TickCount 24620588 Ticks: 12 (0:00:00:00.187)
+Context Switch Count 772193
+UserTime 00:00:02.293
+KernelTime 00:00:09.828
+Win32 Start Address windbg (0x006e63b8)
+Stack Init a7eba000 Current a7eb9c10 Base a7eba000 Limit a7eb7000 Call 0
+Priority 10 BasePriority 8 PriorityDecrement 0 IoPriority 2 PagePriority 5
+Unable to get context for thread running on processor 1, HRESULT 0x80004001
+1 total locks, 1 locks currently held
+```
+</details>
+
+### Pushlocks
+
+- are another optimized synchronization mechanism built on **gate objects**; like guarded mutexes, they wait for a gate object only when there’s contention on the lock.
+- 👍 over the guarded mutex :
+    - they can be acquired in **shared** or **exclusive** mode.
+    - their main advantage is their **size**: a resource object is *56 bytes*, but a pushlock is *pointer-size*.
+- There are two types of pushlocks:
+    -  A **normal** pushlock: When a thread acquires a normal pushlock, the pushlock code marks the pushlock as owned if it is not currently owned. If the pushlock is owned exclusively or the thread wants to acquire the thread exclusively and the pushlock is owned on a shared basis, the thread allocates a wait block on the thread’s stack, initializes a gate object in the wait block, and adds the wait block to the wait list associated with the pushlock When a thread releases a pushlock, the thread wakes a waiter, if any are present, by signaling the event in the waiter’s wait block
+    - A **cache-aware** pushlock adds layers to the normal (basic) pushlock by allocating a pushlock for **each processor** in the system and associating it with the cache-aware pushlock.
+- 👍 Other than a much smaller memory footprint, one of the large advantages that pushlocks have over **executive resources** is that in the *non-contended* case they do not require lengthy accounting and integer operations to perform acquisition or release.
+- pushlocks use several algorithmic tricks to avoid **lock convoys** (a situation that can occur when multiple threads of the same priority are all waiting on a lock and little actual work gets done), and they are also **self-optimizing**: the list of threads waiting on a pushlock will be periodically rearranged to provide fairer behavior when the pushlock is released.
