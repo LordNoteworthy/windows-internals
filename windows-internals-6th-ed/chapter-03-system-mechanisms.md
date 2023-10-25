@@ -626,14 +626,14 @@ lkd> dq nt!KiServiceTable
 
 -  When a thread is trying to acquire a spinlock, all other activity at the spinlock’s IRQL or lower ceases on that processor.
     - Because thread dispatching happens at DPC/dispatch level, a thread that holds a spinlock is **never preempted** because the IRQL masks the dispatching mechanisms.
-    - This masking allows code executing in a critical section protected by a spinlock to **continue executing** so that it will release the lock quickly.
+    - This masking allows code executing in a CS protected by a spinlock to **continue executing** so that it will release the lock quickly.
     - Any processor that attempts to acquire the spinlock will essentially be busy, waiting indefinitely, **consuming power** (a busy wait results in 100% CPU usage 😣) and performing no actual work.
     - 👍 In x86/x64, the `PAUSE` asm instruction can be inserted in busy wait loops to offer a hint to the processor that the loop instructions it is processing are part of a spinlock (or a similar construct) acquisition loop.
 </details>
 
 - The kernel provides a set of kernel functions including: `KeAcquireSpinLock` and `KeReleaseSpinLock`.
 - The kernel also exports the `KeAcquireInterruptSpinLock` and `KeReleaseInterruptSpinLock` for device drivers, because raising the IRQL only to DPC/dispatch level this isn’t enough to protect against **interrupts**.
-- Devices can use the `KeSynchronizeExecution` API to synchronize an entire function with an ISR, instead of just a critical section.
+- Devices can use the `KeSynchronizeExecution` API to synchronize an entire function with an ISR, instead of just a CS.
 - ⚠️ Because spinlocks always have an IRQL of DPC/dispatch +, code holding a spinlock will crash the system if it attempts to make the **scheduler perform a dispatch operation** or if it causes a **page fault**.
 
 #### Queued Spinlocks
@@ -651,7 +651,7 @@ lkd> dq nt!KiServiceTable
 
 - Because waiting for a spinlock literally **stalls a processor**, spinlocks can be used only under the following strictly limited circumstances:
     - The protected resource must be accessed **quickly** and without complicated interactions with other code
-    - The critical section code can’t be **paged out of memory**, can’t make references to **pageable data**, can’t call **external procedures** (including system services), and can’t generate interrupts or exceptions.
+    - The CS code can’t be **paged out of memory**, can’t make references to **pageable data**, can’t call **external procedures** (including system services), and can’t generate interrupts or exceptions.
 - The following Kernel Synchronization Mechanisms are available for Kernel mode:
 <p align="center"><img src="./assets/kernel-synchronization-mechanisms.png" width="700px" height="auto"></p>
 
@@ -879,3 +879,39 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
     - A **cache-aware** pushlock adds layers to the normal (basic) pushlock by allocating a pushlock for **each processor** in the system and associating it with the cache-aware pushlock.
 - 👍 Other than a much smaller memory footprint, one of the large advantages that pushlocks have over **executive resources** is that in the *non-contended* case they do not require lengthy accounting and integer operations to perform acquisition or release.
 - pushlocks use several algorithmic tricks to avoid **lock convoys** (a situation that can occur when multiple threads of the same priority are all waiting on a lock and little actual work gets done), and they are also **self-optimizing**: the list of threads waiting on a pushlock will be periodically rearranged to provide fairer behavior when the pushlock is released.
+
+### Critical Sections
+
+- are one of the main synchronization primitives that Windows provides to user-mode applications on top of the kernel-based synchronization primitives.
+- have one major advantage over their kernel counterparts, which is saving a **round-trip** to **kernel** mode in cases in which the lock is *non-contended*, which is typically **99%** of the time or more.
+- performs the locking logic using interlocked CPU operations.
+- in contended cases, the kernel must be called to put the thread in a wait state.
+- because CSs are **not kernel objects**, they have certain limitations 👎:
+    - you cannot obtain a kernel handle to a CS; as such, **no security**, **naming**, or other object manager functionality can be applied to a CS.
+    - Two processes cannot use the same CS to coordinate their operations, nor can duplication or inheritance be used.
+
+### User-Mode Resources
+
+- also provide more fine-grained locking mechanisms than kernel primitives.
+- not exposed through the Windows API for standard apps but you can use `ntdll` alternatives (`RtlAcquireResourceExclusive`, ..) 🤓.
+- can be acquired for shared mode or for exclusive mode, allowing it to function as a **multiple-reader** (shared), **single-writer** (exclusive) lock for data structures such as databases.
+- no trip to the kernel is required because none of the threads will be waiting. Only when a thread attempts to acquire the resource for **exclusive** access, or the resource is **already locked** by an exclusive owner, will this be required.
+- A resource data structure (`RTL_RESOURCE`) contains handles to a **kernel mutex** as well as a **kernel semaphore** object.
+    - When the resource is acquired **exclusively** by more than one thread, the resource uses the mutex because it permits only one owner.
+    - When the resource is acquired in shared mode by more than one thread, the resource uses a semaphore because it allows multiple owner counts.
+
+### Condition Variables
+
+- Condition variables provide a Windows native implementation for synchronizing a set of threads that are waiting on a specific result to a **conditional test**.
+- Although this operation was possible with other user-mode synchronization methods, there was **no atomic** mechanism to check the result of the conditional test and to begin waiting on a change in the result.
+- Before condition variables, it was common to use either a **notification** event or a **synchronization** event (recall that these are referred to as **auto-reset** or **manual**-reset in the Windows API) to signal the change to a variable, such as the state of a worker queue.
+    - Waiting for a change required a CS to be acquired and then released, followed by a wait on an event.
+    - After the wait, the CS had to be re-acquired. During this series of acquisitions and releases, the thread might have switched contexts, causing problems if one of the threads called `PulseEvent` (a similar problem to the one that keyed events solve by **forcing a wait** for the signaling thread if there is **no waiter**).
+- With condition variables, acquisition of the CS can be maintained by the app while `SleepConditionVariableCS` is called and can be released only after the actual work is done.
+    - ▶️ This makes writing work-queue code (and similar implementations) much simpler and predictable.
+- Internally, condition variables can be thought of as a **port** of the existing **pushlock** algorithms present in kernel mode, with the additional complexity of acquiring and releasing CSs in the `SleepConditionVariableCS` API.
+    - 👍 condition variables are **pointer-size** (just like pushlocks),
+    - 👍 avoid using the **dispatcher** (which requires a ring transition to kernel mode in this scenario, making the advantage even more noticeable),
+    - 👍 automatically optimize the wait list during wait operations, and protect against **lock convoys**,
+    - 👍 Additionally, condition variables make full use of **keyed events** instead of the regular **event object** that developers would have used on their own, which makes even **contended** cases more **optimized**.
+
