@@ -915,3 +915,26 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
     - 👍 automatically optimize the wait list during wait operations, and protect against **lock convoys**,
     - 👍 Additionally, condition variables make full use of **keyed events** instead of the regular **event object** that developers would have used on their own, which makes even **contended** cases more **optimized**.
 
+### Slim Reader-Writer Locks
+
+- If condition variables share a lot of similarities with pushlocks, Slim Reader-Writer (SRW) Locks are nearly identical.
+- They are also **pointer-size**, use **atomic** operations for acquisition and release, rearrange their **waiter lists**, protect against lock **convoys**, and can be acquired both in **shared** and **exclusive** mode.
+- Some differences from pushlocks, however:
+    - SRW Locks cannot be **“upgraded”** or **converted** from **shared** to **exclusive** or vice versa,
+    - they cannot be recursively acquired,
+    - are exclusive to **user-mode** code, while pushlocks are exclusive to **kernel-mode** code, and the two cannot be shared or exposed from one layer to the other.
+- SRW Locks entirely replace CSs in application code, but they also offer **multiple-reader**, **single-writer** functionality.
+
+### Run Once Initialization
+
+- Windows implements *init once*, or *one-time initialization* (also called *run once initialization* internally).
+- This mechanism allows for both **synchronous** (meaning that the other threads must wait for initialization to complete) execution of a certain piece of code, as well as **asynchronous** (meaning that the other threads can attempt to do their own initialization and race) execution.
+- For the **synchronous case**:  call `InitOnceExecuteOnce` with the *parameter*, *context*, and *run-once* function pointer after initializing an `INIT_ONCE` object with `InitOnceInitialize` API The system will take care of the rest.
+- For the  **asynchronous case**: the threads call `InitOnceBeginInitialize` and receive a `BOOLEAN` *pending status* and the *context*.
+    - If the *pending status* is `FALSE`, initialization has already taken place, and the thread uses the *context* value for the result (It’s also possible for the function itself to return `FALSE`, meaning that initialization failed ).
+    - If the *pending status* comes back as `TRUE`, the thread **should race** to be the first to create the object.
+        1. The code that follows performs whatever initialization tasks are required, such as creating objects or allocating memory.
+        2. When this work is done, the thread calls `InitOnceComplete` with the result of the work as the context and receives a `BOOLEAN` status.
+            - If the *status* is `TRUE`, the thread **won the race**, and the object that it created or allocated is the one that will be the global object. The thread can now save this object or return it to a caller, depending on the usage.
+            - In the more complex scenario when the status is `FALSE`, this means that the thread lost the race. The thread must **undo** all the work it did, such as deleting objects or freeing memory, and then call `InitOnceBeginInitialize` again. However, instead of requesting to start a race as it did initially, it uses the `INIT_ONCE_CHECK_ONLY` flag, knowing that it has lost, and requests the winner’s context instead (for example, the objects or memory that were created or allocated by the winner). This returns another status, which can be `TRUE`, meaning that the context is valid and should be used or returned to the caller, or `FALSE`, meaning that initialization failed and nobody has actually been able to perform the work (such as in the case of a low-memory condition, perhaps) 🤷‍♂️.
+- The *init once* structure is **pointer-size**, and **inline assembly** versions of the **SRW** acquisition/release code are used for the non-contended case, while **keyed events** are used whe contention has occurred (which happens when the mechanism is used in synchronous mode) and the other threads must wait for initialization. In the asynchronous case, the locks are used in shared mode, so multiple threads can perform initialization at the same time.
