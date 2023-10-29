@@ -938,3 +938,70 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
             - If the *status* is `TRUE`, the thread **won the race**, and the object that it created or allocated is the one that will be the global object. The thread can now save this object or return it to a caller, depending on the usage.
             - In the more complex scenario when the status is `FALSE`, this means that the thread lost the race. The thread must **undo** all the work it did, such as deleting objects or freeing memory, and then call `InitOnceBeginInitialize` again. However, instead of requesting to start a race as it did initially, it uses the `INIT_ONCE_CHECK_ONLY` flag, knowing that it has lost, and requests the winner’s context instead (for example, the objects or memory that were created or allocated by the winner). This returns another status, which can be `TRUE`, meaning that the context is valid and should be used or returned to the caller, or `FALSE`, meaning that initialization failed and nobody has actually been able to perform the work (such as in the case of a low-memory condition, perhaps) 🤷‍♂️.
 - The *init once* structure is **pointer-size**, and **inline assembly** versions of the **SRW** acquisition/release code are used for the non-contended case, while **keyed events** are used whe contention has occurred (which happens when the mechanism is used in synchronous mode) and the other threads must wait for initialization. In the asynchronous case, the locks are used in shared mode, so multiple threads can perform initialization at the same time.
+
+### System Worker Threads
+
+- During system initialization, Windows creates several threads in the System process, called **system worker threads**, which exist solely to perform work on behalf of other threads.
+- Some device drivers and executive components create their **own** threads dedicated to processing work at **passive** level; however, most use system worker threads instead:
+    - 👍 avoids the unnecessary scheduling and memory overhead associated with having additional threads in the system.
+- `IoQueueWorkItem` requests a system worker thread’s services by placing a work item on a **queue dispatcher** object where the threads look for work. At some stage, a system worker thread will remove the work item from its queue and execute the driver’s routine. If there aren’t any more, the system worker thread blocks until a work item is placed on the queue.
+- There are three types of system worker threads:
+    - *Delayed worker threads* execute at **priority 12**, process work items that **aren’t** considered **time-critical**, and can have their **stack paged out** to a paging file while they wait for work items.
+    - *Critical worker threads* execute at **priority 13**, process **time-critical** work items, and on Windows Server systems have their **stacks present in physical memory** at all times.
+    - A *single hypercritical worker thread* executes at **priority 15** and also keeps its stack in memory.
+- The number of delayed and critical worker threads created by the executive’s `ExpWorkerInitialization` function, which is called **early in the boot process**, depends on the amount of **memory present** on the system and whether the system is a **server**.
+
+🔭 EXPERIMENT: Listing System Worker Threads
+
+- You can use the `!exqueue` kernel debugger command to see a listing of system worker threads classified by their type.
+- <details><summary>lkd> !exqueue</summary>
+```c
+Dumping ExWorkerQueue: 820FDE40
+**** Critical WorkQueue( current = 0 maximum = 2 )
+THREAD 861160b8 Cid 0004.001c Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613b020 Cid 0004.0020 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613bd78 Cid 0004.0024 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613bad0 Cid 0004.0028 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613b828 Cid 0004.002c Teb: 00000000 Win32Thread: 00000000 WAIT
+**** Delayed WorkQueue( current = 0 maximum = 2 )
+THREAD 8613b580 Cid 0004.0030 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613b2d8 Cid 0004.0034 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613c020 Cid 0004.0038 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613cd78 Cid 0004.003c Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613cad0 Cid 0004.0040 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613c828 Cid 0004.0044 Teb: 00000000 Win32Thread: 00000000 WAIT
+THREAD 8613c580 Cid 0004.0048 Teb: 00000000 Win32Thread: 00000000 WAIT
+**** HyperCritical WorkQueue( current = 0 maximum = 2 )
+THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
+```
+</details>
+
+### Windows Global Flags
+
+- Windows has a set of flags stored in a **systemwide global variable** named `NtGlobalFlag` that enable various internal debugging, tracing, and validation support in the OS.
+- In addition, each image has a set of **global flags** that also turn on internal tracing and validation code
+-`Gflags.exe` can be used to view and change the system global flags (either in the registry or in the running system) as well as image global flags.
+- You can use the `!gflag` kernel debugger command to view and set the state of the `NtGlobalFlag` kernel variable.
+
+### Advanced Local Procedure Call
+
+-  Windows implements an internal IPC mechanism called Advanced Local Procedure Call, or **ALPC**, which is a high-speed, scalable, and secured facility for message passing arbitrary-size messages.
+- ALPC superceded the legacy IPC system called **LPC**. LPC is now emulated on top of ALPC for **compatibility** and has been removed from the kernel (legacy system calls still exist, which get wrapped into ALPC calls).
+- Although it is internal, and thus not available for third-party developers, ALPC is widely used in various parts of Windows:
+    - **RPC**, a documented API, indirectly use ALPC when they specify local-RPC over the *ncalrpc* transport, a form of RPC used to communicate between processes on the same system Kernel-mode RPC, used by the network stack, also uses ALPC.
+    - Whenever a Windows **process and/or thread** starts, as well as during any Windows **subsystem** operation (such as all console I/O), ALPC is used to communicate with the subsystem process (`CSRSS`). ▶️ All subsystems communicate with the session manager (SMSS) over ALPC.
+    - Winlogon uses ALPC to communicate with LSASS.
+    - The SRM uses ALPC to communicate with the LSASS process.
+    - The user-mode **power manager** and **power monitor** communicate with the kernel-mode power manager over ALPC, such as whenever the LCD brightness is changed.
+    - **Windows Error Reporting** uses ALPC to receive context information from crashing processes
+    - The UMDF enables user-mode drivers to communicate using ALPC.
+
+### Connection Model
+
+- An ALPC connection can be established between two or more user-mode processes or between a kernel-mode component and one or more user-mode processes.
+- ALPC exports a single executive object called the **port object** to maintain the state needed for communication.
+- A server first creates a server connection port (`NtAlpcCreatePort`), while a client attempts to connect to it (`NtAlpcConnectPort`).
+    - If the server was in a listening state, it receives a connection request message and can choose to accept it (`NtAlpcAcceptPort`).
+    - In doing so, both the client and server communication ports are created, and each respective endpoint process receives a handle to its communication port.
+    - Messages are then sent across this handle (`NtAlpcSendWaitReceiveMessage`), typically in a **dedicated thread**, so that the server can continue listening for connection requests on the original connection port (unless this server expects only one client).
+- Once a connection is made, a connection information structure (actually, a **blob**) stores the linkage between all the different ports. <p align="center"><img src="./assets/use-of-alpc-ports.png" width="400px" height="auto"></p>
