@@ -955,6 +955,7 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
 
 - You can use the `!exqueue` kernel debugger command to see a listing of system worker threads classified by their type.
 - <details><summary>lkd> !exqueue</summary>
+
 ```c
 Dumping ExWorkerQueue: 820FDE40
 **** Critical WorkQueue( current = 0 maximum = 2 )
@@ -1005,3 +1006,33 @@ THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
     - In doing so, both the client and server communication ports are created, and each respective endpoint process receives a handle to its communication port.
     - Messages are then sent across this handle (`NtAlpcSendWaitReceiveMessage`), typically in a **dedicated thread**, so that the server can continue listening for connection requests on the original connection port (unless this server expects only one client).
 - Once a connection is made, a connection information structure (actually, a **blob**) stores the linkage between all the different ports. <p align="center"><img src="./assets/use-of-alpc-ports.png" width="400px" height="auto"></p>
+
+### Message Model
+
+- Using ALPC, a client and thread using blocking messages each take turns performing a loop around the `NtAlpcSendWaitReplyPort` system call, in which one side sends a request and waits for a reply while the other side does the opposite.
+- ALPC supports asynchronous messages, so it’s possible for either side not to block and choose instead to perform some other work.
+- ALPC supports the following three methods of exchanging payloads sent with a message:
+    1. A message can be sent to another process through the standard **double-buffering** mechanism, in which the kernel maintains a copy of the message, switches to the target process, and copies the data from the kernel’s buffer.
+    2. A message can be stored in an ALPC **section** object from which the client and server processes **map views**.
+    3. A message can be stored in a **message zone**, which is an MDL that backs the physical pages containing the data and that is mapped into the kernel’s address space.
+
+<details><summary>🔭 EXPERIMENT: Viewing Subsystem ALPC Port Objects</summary>
+<p align="center"><img src="./assets/winobj-alpc-port.png" width="400px" height="auto"></p>
+</details>
+
+### Asynchronous Operation
+
+- The synchronous model of ALPC is tied to the original **LPC** architecture in the early NT design, and is similar to other blocking IPC mechanisms, such as *Mach ports*.
+- ALPC was primarily designed to support **asynchronous** operation as well, which is a requirement for **scalable** RPC and other uses, such as support for **pending I/O** in user-mode drivers.
+- ALPC also introduced a feature where blocking calls can have a **timeout** parameter.
+- ALPC is more optimized for asynchronous messages and provides three different models for asynchronous notifications:
+    1. The first doesn’t actually notify the client or server, but simply copies the data payload.
+        - up to the implementor to choose a reliable synchronization method (events, polling. etc..).
+        - The data structure used by this model is the ALPC completion list.
+    2. The second is a waiting model that uses the Windows **completion port** mechanism (on top of the ALPC completion list).
+        - The RPC system in Windows, when using Local RPC (over *ncalrpc*), also makes use of this functionality to provide efficient message delivery by taking advantage of this kernel support.
+    3. The third model provides a mechanism for a more basic, kernel-based notification using **executive callback** objects.
+        - A driver can register its own callback and context with `NtSetInformationAlpcPort`, after which it will get called whenever a message is received.
+
+### Views, Regions, and Sections
+
