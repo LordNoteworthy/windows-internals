@@ -594,7 +594,70 @@ lkd> dq nt!KiServiceTable
 ```
 </details>
 
-...
+## Object Manager
+
+- Windows object manager is the executive component responsible for creating, deleting, protecting, and tracking objects.
+- Why ?
+    - a common, **uniform** mechanism for using system resources
+    - uniform and consistent object **access policy**.
+    - provide a mechanism to charge processes for their use of objects : **quota**.
+    - establish an object-naming **scheme** that can readily incorporate existing objects,
+    - support ability of a process to **inherit** resources from a parent process and create **case-sensitive** file names (needed by Subsystem for UNIX Apps).
+    - establish uniform rules for object **retention**.
+    - **isolate** objects for a specific **session** to allow for both local and global objects in the namespace.
+- Internally, Windows has three kinds of objects:
+    1. executive objects:
+       - implemented by various components of the executive (such as the process manager, memory manager, I/O subsystem, etc.).
+    2. kernel objects:
+       - are a more primitive set of objects implemented by the Windows kernel.
+       - not visible to **user-mode** code but are created and used only within the **executive**.
+       - they provide fundamental capabilities, such as **synchronization**, on which executive objects are built.
+    3. GDI/User objects:
+       - belong to the Windows subsystem (`Win32k.sys`) and do not interact with the kernel.
+
+### Executive Objects
+
+- The executive implements more than 4k of object types many of these objects are for use only by the executive component that defines them and are **not directly accessible** by Windows APIs.
+  - Examples of these objects include `Driver`, `Device`, and `EventPair`.
+- Below are some examples pf primary objects the executive provides:
+<p align="center"><img src="./assets/executive-objects.png" width="700px" height="auto"></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Synchronization
 
@@ -939,7 +1002,7 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
             - In the more complex scenario when the status is `FALSE`, this means that the thread lost the race. The thread must **undo** all the work it did, such as deleting objects or freeing memory, and then call `InitOnceBeginInitialize` again. However, instead of requesting to start a race as it did initially, it uses the `INIT_ONCE_CHECK_ONLY` flag, knowing that it has lost, and requests the winner’s context instead (for example, the objects or memory that were created or allocated by the winner). This returns another status, which can be `TRUE`, meaning that the context is valid and should be used or returned to the caller, or `FALSE`, meaning that initialization failed and nobody has actually been able to perform the work (such as in the case of a low-memory condition, perhaps) 🤷‍♂️.
 - The *init once* structure is **pointer-size**, and **inline assembly** versions of the **SRW** acquisition/release code are used for the non-contended case, while **keyed events** are used whe contention has occurred (which happens when the mechanism is used in synchronous mode) and the other threads must wait for initialization. In the asynchronous case, the locks are used in shared mode, so multiple threads can perform initialization at the same time.
 
-### System Worker Threads
+## System Worker Threads
 
 - During system initialization, Windows creates several threads in the System process, called **system worker threads**, which exist solely to perform work on behalf of other threads.
 - Some device drivers and executive components create their **own** threads dedicated to processing work at **passive** level; however, most use system worker threads instead:
@@ -977,16 +1040,16 @@ THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
 ```
 </details>
 
-### Windows Global Flags
+## Windows Global Flags
 
 - Windows has a set of flags stored in a **systemwide global variable** named `NtGlobalFlag` that enable various internal debugging, tracing, and validation support in the OS.
 - In addition, each image has a set of **global flags** that also turn on internal tracing and validation code
 -`Gflags.exe` can be used to view and change the system global flags (either in the registry or in the running system) as well as image global flags.
 - You can use the `!gflag` kernel debugger command to view and set the state of the `NtGlobalFlag` kernel variable.
 
-### Advanced Local Procedure Call
+## Advanced Local Procedure Call
 
--  Windows implements an internal IPC mechanism called Advanced Local Procedure Call, or **ALPC**, which is a high-speed, scalable, and secured facility for message passing arbitrary-size messages.
+-  Windows implements an internal IPC mechanism called *Advanced Local Procedure Call*, or **ALPC**, which is a high-speed, scalable, and secured facility for message passing arbitrary-size messages.
 - ALPC superceded the legacy IPC system called **LPC**. LPC is now emulated on top of ALPC for **compatibility** and has been removed from the kernel (legacy system calls still exist, which get wrapped into ALPC calls).
 - Although it is internal, and thus not available for third-party developers, ALPC is widely used in various parts of Windows:
     - **RPC**, a documented API, indirectly use ALPC when they specify local-RPC over the *ncalrpc* transport, a form of RPC used to communicate between processes on the same system Kernel-mode RPC, used by the network stack, also uses ALPC.
@@ -1004,20 +1067,20 @@ THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
 - A server first creates a server connection port (`NtAlpcCreatePort`), while a client attempts to connect to it (`NtAlpcConnectPort`).
     - If the server was in a listening state, it receives a connection request message and can choose to accept it (`NtAlpcAcceptPort`).
     - In doing so, both the client and server communication ports are created, and each respective endpoint process receives a handle to its communication port.
-    - Messages are then sent across this handle (`NtAlpcSendWaitReceiveMessage`), typically in a **dedicated thread**, so that the server can continue listening for connection requests on the original connection port (unless this server expects only one client).
-- Once a connection is made, a connection information structure (actually, a **blob**) stores the linkage between all the different ports. <p align="center"><img src="./assets/use-of-alpc-ports.png" width="400px" height="auto"></p>
+    - Messages are then sent across this handle (`NtAlpcSendWaitReceiveMessage`), typically in a **dedicated thread**, so that the server can continue listening for connection requests on the original connection port.
+- Once a connection is made, a connection information structure (actually, a **blob**) stores the linkage between all the different ports. <p align="center"><img src="./assets/use-of-alpc-ports.png" width="500px" height="auto"></p>
 
 ### Message Model
 
 - Using ALPC, a client and thread using blocking messages each take turns performing a loop around the `NtAlpcSendWaitReplyPort` system call, in which one side sends a request and waits for a reply while the other side does the opposite.
-- ALPC supports asynchronous messages, so it’s possible for either side not to block and choose instead to perform some other work.
+- ALPC supports **asynchronous** messages, so it’s possible for **either side** not to block and choose instead to perform some other work.
 - ALPC supports the following three methods of exchanging payloads sent with a message:
     1. A message can be sent to another process through the standard **double-buffering** mechanism, in which the kernel maintains a copy of the message, switches to the target process, and copies the data from the kernel’s buffer.
     2. A message can be stored in an ALPC **section** object from which the client and server processes **map views**.
     3. A message can be stored in a **message zone**, which is an MDL that backs the physical pages containing the data and that is mapped into the kernel’s address space.
 
 <details><summary>🔭 EXPERIMENT: Viewing Subsystem ALPC Port Objects</summary>
-<p align="center"><img src="./assets/winobj-alpc-port.png" width="400px" height="auto"></p>
+<p align="center"><img src="./assets/winobj-alpc-port.png" width="600px" height="auto"></p>
 </details>
 
 ### Asynchronous Operation
@@ -1036,3 +1099,102 @@ THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
 
 ### Views, Regions, and Sections
 
+- Instead of sending message buffers between their two respective processes, a server and client can choose a more efficient data-passing mechanism that is at the core of Windows’ memory manager: the **section object**.
+- Section objects allow more flexibility on securing the IPC communication against attacks on shared memory.
+
+### Attributes
+
+- ALPC also enables specific **contextual information** to be added to each message and have the kernel track the validity, lifetime, and implementation of that information. ALPC calls this data **attributes**:
+  - **security** attribute: holds key information to allow impersonation of clients.
+  - **data view** attribute: responsible for managing the different views associated with the regions of an ALPC section.
+  - **handle** attribute: contains information about which handles to associate with the message.
+  - **context** attribute: supports the traditional, LPC-style, user-specific context pointer that could be associated with a given message, and it is still supported for scenarios where custom data needs to be associated with a client/server pair.
+
+### Blobs, Handles, and Resources
+
+- Instead of using the Object Manager’s routines for **data management**, ALPC implements its own lightweight objects called **blob**.
+- In the ALPC model, **messages are blobs**, for example, and their constructor generates a message ID, which is itself a handle into ALPC’s handle table. Other ALPC blobs include the following:
+  - The **connection** blob, which stores the client and server communication ports, as well as the server connection port and ALPC handle table.
+  - The **security** blob, which stores the security data necessary to allow impersonation of a client. It stores the security attribute.
+  - The **section, region, and view** blobs, which describe ALPC’s shared-memory model. The view blob is ultimately responsible for storing the data view attribute.
+  - The **reserve** blob, which implements support for ALPC *Reserve* Objects.
+  - The **handle data** blob, which contains the information that enables ALPC’s handle attribute support.
+- Message can have **multiple views** associated with it, the views must be tracked with the messages that reference them. ALPC implements this functionality by using a concept of **resources**.
+
+### Security
+
+- At a base level, ALPC port objects are managed by the same object manager interfaces that manage object security, preventing nonprivileged apps from obtaining handles to server ports with ACL.
+- On top of that, ALPC provides a **SID-based** trust model, inherited from the original LPC design.
+
+### Performance
+
+- ALPC uses several strategies to enhance performance, primarily through its support of **completion lists**:
+  - which is essentially a user MDL that’s been probed and locked and then mapped to an address. Because it’s associated with an MDL, the payload copy can happen directly at the physical level, instead of requiring the kernel to double-buffer the message, as is common in other IPC mechanisms.
+  - use of **message zones** which is simply a pre-allocated kernel buffer (also backed by an MDL) in which a message can be stored until a server or client retrieves it.
+  - instead of copying data as soon as it is sent, the kernel sets up the payload for a **delayed copy**, capturing only the needed information, but without any copying.
+
+### Debugging and Tracing
+
+- On checked builds of the kernel, ALPC messages can be logged usin the undocumented `!alpc` command.
+- On retail systems, Admins can enable the ALPC **ETW logger** to monitor ALPC messages (just headers, not payloads).
+
+<details><summary>🔭 EXPERIMENT: Dumping a Connection Port:</summary>
+
+- In this experiment, you’ll use the **CSRSS API** port for Windows processes running in Session 1, which is the typical interactive session for the console user. Whenever a Windows application launches, it connects to CSRSS’s API port in the appropriate session.
+- Start by obtaining a pointer to the connection port with the `!object` command:
+
+```c
+kd> !object \Sessions\1\Windows\ApiPort
+Object: fffffa8004dc2090 Type: (fffffa80027a2ed0) ALPC Port
+ObjectHeader: fffffa8004dc2060 (new version)
+HandleCount: 1 PointerCount: 50
+Directory Object: fffff8a001a5fb30 Name: ApiPort
+```
+
+- Now dump information on the port object itself with `!alpc /p``. This will confirm, for example, that CSRSS is the owner:
+```c
+kd> !alpc /p fffffa8004dc2090
+Port @ fffffa8004dc2090
+Type : ALPC_CONNECTION_PORT
+CommunicationInfo : fffff8a001a22560
+ConnectionPort : fffffa8004dc2090
+ClientCommunicationPort : 0000000000000000
+ServerCommunicationPort : 0000000000000000
+OwnerProcess : fffffa800502db30 (csrss.exe)
+SequenceNo : 0x000003C9 (969)
+CompletionPort : 0000000000000000
+...
+```
+- You can see what **clients** are connected to the **port**, which will include all Windows processes running in the session, with the undocumented `!alpc /lpc` command . You will also see the server and client communication ports associated with each connection and any pending messages on any of the queues:
+```c
+kd> !alpc /lpc fffffa8004dc2090
+Port @fffffa8004dc2090 has 14 connections
+SRV:fffffa8004809c50 (m:0, p:0, l:0) <-> CLI:fffffa8004809e60 (m:0, p:0, l:0),
+Process=fffffa8004ffcb30 ('winlogon.exe')
+SRV:fffffa80054dfb30 (m:0, p:0, l:0) <-> CLI:fffffa80054dfe60 (m:0, p:0, l:0),
+Process=fffffa80054de060 ('dwm.exe')
+```
+
+## Kernel Event Tracing
+
+- ETW (Event Tracing for Windows) is a common infrastructure in the kernel that provides ability to trace various components of the Kernel and its device drivers for use in system troubleshooting.
+- An application that uses ETW falls into one or more of three categories:
+  - **Controller**: starts and stops logging sessions and manages buffer pools.
+  - **Provider**: defines GUIDs for the event classes it can produce traces for and registers them with ETW.
+  - **Consumer** selects one or more trace sessions for which it wants to read trace data.
+- When a controller in user mode enables the kernel logger, the ETW library (implemented in Ntdll.dll) calls the `NtTraceControl` function, telling the ETW code in the kernel which event classes the controller wants to start tracing.
+  - If file logging is configured (as opposed to in-memory logging to a buffer), the kernel creates a **system thread** in the system process that creates a log file.
+  - When the kernel receives trace events from the enabled trace sources, it records them to a buffer.
+  - If it was started, the file logging thread **wakes up once per second** to dump the contents of the buffers to the log file.
+
+## WOW64
+
+- Wow64 (Win32 emulation on 64-bit Windows) refers to the software that permits the execution of 32-bit x86 applications on 64-bit Windows.
+- implemented as a set of **user-mode DLLs**, with some support from the kernel for creating 32-bit versions of what would normally only be 64-bit data ­structures, such as the PEB and TEB.
+­- Here are the user-mode DLLs responsible for Wow64:
+    - `Wow64.dll` Manages **process** and **thread** **creation**, and hooks **exception-dispatching** and base **system calls** exported by `Ntoskrnl.exe`. It also implements **file-system redirection** and **registry redirection**.
+    - `Wow64Cpu.dll` Manages the **32-bit CPU context** of each running **thread** inside Wow64, and provides **processor architecture-specific** support for switching CPU mode from 32-bit to 64-bit and vice versa.
+    - `Wow64Win.dll` Intercepts the **GUI system calls** exported by `Win32k.sys`.
+    - `IA32Exec.bin` and `Wowia32x.dll` on **IA64** systems Contain the IA-32 software­ **emulator** and its interface library.
+
+<p align="center"><img src="assets/wow64-arch.png" width="400px" height="auto"></p>

@@ -75,7 +75,7 @@
 
 ### Environment Subsystems and Subsystem DLLs
 
-- The role of an environment subsystem is to expose some subset of the base Windows executive system services to application programs.
+- The role of an environment subsystem is to **expose** some subset of the base Windows executive system services to application programs.
 - User applications don’t call Windows system services **directly**. Instead, they go through one or more subsystem DLLs.
 - These libraries export the documented interface that the programs linked to that subsystem can call. For example, the Windows subsystem DLLs (such as `kernel32.dll`, `advapi32.dll`, `user32.dll`, and `gdi32.dll`) implement the Windows API functions. The **SUA** subsystem DLL (`psxdll.dll`) implements the **SUA API** functions.
 - When an application calls a function in a subsystem DLL, one of three things can occur:
