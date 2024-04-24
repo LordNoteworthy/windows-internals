@@ -606,30 +606,39 @@ lkd> dq nt!KiServiceTable
     - establish uniform rules for object **retention**.
     - **isolate** objects for a specific **session** to allow for both local and global objects in the namespace.
 - Internally, Windows has three kinds of objects:
-    1. executive objects:
+    1. **executive** objects:
        - implemented by various components of the executive (such as the process manager, memory manager, I/O subsystem, etc.).
-    2. kernel objects:
+    2. **kernel** objects:
        - are a more primitive set of objects implemented by the Windows kernel.
        - not visible to **user-mode** code but are created and used only within the **executive**.
        - they provide fundamental capabilities, such as **synchronization**, on which executive objects are built.
-    3. GDI/User objects:
+    3. **GDI/User** objects:
        - belong to the Windows subsystem (`Win32k.sys`) and do not interact with the kernel.
 
 ### Executive Objects
 
-- The executive implements more than 4k of object types many of these objects are for use only by the executive component that defines them and are **not directly accessible** by Windows APIs.
+- The executive implements more than 4242 of object types many of these objects are for use only by the executive component that defines them and are **not directly accessible** by Windows APIs.
   - Examples of these objects include `Driver`, `Device`, and `EventPair`.
-- Below are some examples pf primary objects the executive provides:
+- Below are a tiny set of examples of executive objects exposed to the Windows API:
 <p align="center"><img src="./assets/executive-objects.png" width="700px" height="auto"></p>
 
+### Object Structure
 
+- each object has an object **header** and an object **body**.
+- each object header also contains an **index** to a special object, called the *type object*, that contains information common to each instance of the object. <p align="center"><img src="./assets/structure-of-an-object.png" height="auto"></p>
+- each object header can contain up to 5 optional **subheaders** that contains optional information regarding specific aspects of the object.
 
+### Object Headers and Bodies
 
-
-
-
-
-
+| Field |  Purpose |
+|-------|----------|
+|Handle count | Maintains a count of the number of currently opened handles to the object|
+|Pointer count | Maintains a count of the number of references to the object (including one reference for each handle) Kernel-mode components can reference an object by pointer without using a handle|
+|Security descriptor | Determines who can use the object and what they can do with it Note that unnamed objects, by definition, cannot have security.|
+| Object type index | Contains the index to a *type object* that contains attributes common to objects of this type. The table that stores all the type objects is `ObTypeIndexTable`. |
+| Subheader mask | Bitmask describing which of the optional subheader structures are present, except for the creator information subheader, which, if present, always precedes the object The bitmask is converted to a negative offset by using the `ObpInfoMaskToOffset` table, with each subheader being associated with a 1-byte index that places it relative to the other subheaders present |
+| Flags | Characteristics and object attributes for the object.|
+| Lock | Per-object lock used when modifying fields belonging to this object header or any of its subheaders. |
 
 
 
