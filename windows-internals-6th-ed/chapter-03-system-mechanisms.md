@@ -624,39 +624,146 @@ lkd> dq nt!KiServiceTable
 
 ### Object Structure
 
-- each object has an object **header** and an object **body**.
-- each object header also contains an **index** to a special object, called the *type object*, that contains information common to each instance of the object. <p align="center"><img src="./assets/structure-of-an-object.png" height="auto"></p>
-- each object header can contain up to 5 optional **subheaders** that contains optional information regarding specific aspects of the object.
+- Each object has an object **header** and an object **body**.
+  - The object body format and contents are **unique** to its object type; all objects of the same type **share the same object body format**.
+  - Each object header contains an **index** to a special object, called the *type object*, that contains information common to each instance of the object. <p align="center"><img src="./assets/structure-of-an-object.png" width="500px" height="auto"></p>
+- Each object header can contain up to 5 optional **subheaders** that contains optional information regarding specific aspects of the object.
 
-### Object Headers and Bodies
+#### Object Headers and Bodies
+
+- Tables below briefly describes the object header fields:
 
 | Field |  Purpose |
 |-------|----------|
-|Handle count | Maintains a count of the number of currently opened handles to the object|
-|Pointer count | Maintains a count of the number of references to the object (including one reference for each handle) Kernel-mode components can reference an object by pointer without using a handle|
-|Security descriptor | Determines who can use the object and what they can do with it Note that unnamed objects, by definition, cannot have security.|
+| Handle count | Maintains a count of the number of currently opened handles to the object|
+| Pointer count | Maintains a count of the number of references to the object (including one reference for each handle) Kernel-mode components can reference an object by pointer without using a handle|
+| Security descriptor | Determines who can use the object and what they can do with it Note that unnamed objects, by definition, cannot have security.|
 | Object type index | Contains the index to a *type object* that contains attributes common to objects of this type. The table that stores all the type objects is `ObTypeIndexTable`. |
 | Subheader mask | Bitmask describing which of the optional subheader structures are present, except for the creator information subheader, which, if present, always precedes the object The bitmask is converted to a negative offset by using the `ObpInfoMaskToOffset` table, with each subheader being associated with a 1-byte index that places it relative to the other subheaders present |
 | Flags | Characteristics and object attributes for the object.|
 | Lock | Per-object lock used when modifying fields belonging to this object header or any of its subheaders. |
 
+- Finally, a number of **attributes** and/or **flags** determine the behavior of the object during creation time or during certain operations. These flags are received by the object manager whenever any new object is being created, in a structure called the **object attributes**.
+    - This structure defines the **object name**, the **root object directory** where it should be inserted, the **security descriptor** for the object, and the object attribute **flags**.
 
+| Attributes Flag | Header Flag | Purpose |
+|-----------------|-------------|---------|
+| OBJ_INHERIT | Saved in the handle table entry | Determines whether the handle to the object will be inherited by child processes, and whether a process can use `DuplicateHandle` to make a copy. |
+| OBJ_PERMANENT | OB_FLAG_PERMANENT_OBJECT | Defines object retention behavior related to reference counts. |
+| OBJ_EXCLUSIVE | OB_FLAG_EXCLUSIVE_OBJECT | Specifies that the object can be used only by the process that created it. |
+| OBJ_CASE_INSENSITIVE | Stored in the handle table entry | Specifies that lookups for this object in the namespace should be case insensitive. It can be overridden by the case insensitive flag in the object type.
+| OBJ_OPENIF | Not stored, used at run time | Specifies that a create operation for this object name should result in an open, if the object exists, instead of a failure.|
+| OBJ_OPENLINK | Not stored, used at run time | Specifies that the object manager should open a handle to the symbolic link, not the target.|
+| OBJ_KERNEL_HANDLE | OB_FLAG_KERNEL_OBJECT | Specifies that the handle to this object should be a kernel handle.|
+| OBJ_FORCE_ACCESS_CHECK | Not stored, used at run time | Specifies that even if the object is being opened from kernel mode, full access checks should be performed.|
+| OBJ_KERNEL_EXCLUSIVE | OB_FLAG_KERNEL_ONLY_ACCESS | Disables any user-mode process from opening a handle to the object; used to protect the */Device/PhysicalMemory* section object.|
+| N/A | OF_FLAG_DEFAULT_SECURITY_QUOTA | Specifies that the object’s security descriptor is using the default 2-KB quota.|
+| N/A | OB_FLAG_SINGLE_HANDLE_ENTRY | Specifies that the handle information subheader contains only a single entry and not a database.|
+| N/A | OB_FLAG_NEW_OBJECT | Specifies that the object has been created but not yet inserted into the object namespace.|
+| N/A | OB_FLAG_DELETED_INLINE | Specifies that the object is being deleted through the deferred deletion worker thread.|
 
+- Because of the **standardized** object header and subheader structures, the object manager is able to provide a small set of **generic services** that can operate on the attributes stored in any object header and can be used on objects of any type, for example:
+  - `Close`: Closes a handle to an object.
+  - `Duplicate`: Shares an object by duplicating a handle and giving it to another process.
+  - `Query object`: Gets information about an object’s standard attributes.
 
+#### Type Objects
 
+- Type objects contains some data that remains **constant** for all objects of a **particular** type.
+  - ▶️ By storing these static, **object-type-specific** attributes once when creating a new object, we conserve memory.
 
+<details><summary>🔭 EXPERIMENT: Viewing Object Headers and Type Objects</summary>
 
+1. You can look at the process object type data structure in the kernel debugger by first identifying a process object with the `!process` command:
+    ```c
+    lkd> !process 0 0
+    **** NT ACTIVE PROCESS DUMP ****
+    PROCESS fffffa800279cae0
+    SessionId: none Cid: 0004 Peb: 00000000 ParentCid: 0000
+    DirBase: 00187000 ObjectTable: fffff8a000001920 HandleCount: 541.
+    Image: System
+    ```
+2. Then execute the `!object` command with the process object address as the argument:
+    ```c
+    lkd> !object fffffa800279cae0
+    Object: fffffa800279cae0 Type: (fffffa8002755b60) Process
+    ObjectHeader: fffffa800279cab0 (new version)
+    HandleCount: 3 PointerCount: 172 3172
+    ```
+3. Notice that on 32-bit Windows, the object header starts 0x18 (24 decimal) bytes prior to the start of the object body, and on 64-bit Windows, it starts 0x30 (48 decimal) bytes prior—the size of the object header itself. You can view the object header with this command:
+    ```c
+    lkd> dt nt!_OBJECT_HEADER fffffa800279cab0
+    +0x000 PointerCount : 172
+    +0x008 HandleCount : 33
+    +0x008 NextToFree : 0x000000000x00000000'00000003
+    +0x010 Lock : _EX_PUSH_LOCK
+    +0x018 TypeIndex : 0x7 ''
+    +0x019 TraceFlags : 0 ''
+    +0x01a InfoMask : 0 ''
+    +0x01b Flags : 0x2 ''
+    +0x020 ObjectCreateInfo : 0xfffff800'01c53a80 _OBJECT_CREATE_INFORMATION
+    +0x020 QuotaBlockCharged : 0xfffff800'01c53a80
+    +0x028 SecurityDescriptor : 0xfffff8a0'00004b29
+    +0x030 Body : _QUAD
+    ```
+4. Now look at the object type data structure by obtaining its address from the `ObTypeIndexTable` table for the entry associated with the `TypeIndex` field of the object header data structure:
+    ```c
+    lkd> ?? ((nt!_OBJECT_TYPE**)@@(nt!ObTypeIndexTable))[((nt!_OBJECT_
+    HEADER*)0xfffffa800279cab0)->TypeIndex]
+    struct _OBJECT_TYPE * 0xfffffa80'02755b60
+    +0x000 TypeList : _LIST_ENTRY [ 0xfffffa80'02755b60 - 0xfffffa80'02755b60 ]
+    +0x010 Name : _UNICODE_STRING "Process"
+    +0x020 DefaultObject : (null)
+    +0x028 Index : 0x70x7
+    +0x02c TotalNumberOfObjects : 0x380x38
+    +0x030 TotalNumberOfHandles : 0x1320x132
+    +0x034 HighWaterNumberOfObjects : 0x3d
+    +0x038 HighWaterNumberOfHandles : 0x13c
+    +0x040 TypeInfo : _OBJECT_TYPE_INITIALIZER
+    +0x0b0 TypeLock : _EX_PUSH_LOCK
+    +0x0b8 Key : 0x636f7250
+    +0x0c0 CallbackList : _LIST_ENTRY [ 0xfffffa80'02755c20 - 0xfffffa80'02755c20 ]
+    ```
+4. The output shows that the object type structure includes the name of the object type, tracks the total number of active objects of that type, and tracks the peak number of handles and objects of that type. The `CallbackList` also keeps track of any object manager filtering callbacks that are associated with this object type. The `TypeInfo` field stores the pointer to the data structure that stores attributes common to all objects of the object type as well as pointers to the object type’s methods:
+    ```c
+    lkd> ?? ((nt!_OBJECT_TYPE*)0xfffffa8002755b60)->TypeInfo*)0xfffffa8002755b60)->TypeInfo
+    +0x000 Length : 0x70
+    +0x002 ObjectTypeFlags : 0x4a 'J'
+    +0x002 CaseInsensitive : 0y0
+    +0x002 UnnamedObjectsOnly : 0y1
+    +0x002 UseDefaultObject : 0y0
+    +0x002 SecurityRequired : 0y1
+    +0x002 MaintainHandleCount : 0y0
+    +0x002 MaintainTypeList : 0y0
+    +0x002 SupportsObjectCallbacks : 0y1
+    +0x004 ObjectTypeCode : 0
+    +0x008 InvalidAttributes : 0xb0
+    +0x00c GenericMapping : _GENERIC_MAPPING
+    +0x01c ValidAccessMask : 0x1fffff
+    +0x020 RetainAccess : 0x101000
+    +0x024 PoolType : 0 ( NonPagedPool )
+    +0x028 DefaultPagedPoolCharge : 0x1000
+    +0x02c DefaultNonPagedPoolCharge : 0x528
+    +0x030 DumpProcedure : (null)
+    +0x038 OpenProcedure : 0xfffff800'01d98d58 long nt!PspProcessOpen+0
+    +0x040 CloseProcedure : 0xfffff800'01d833c4 void nt!PspProcessClose+0
+    +0x048 DeleteProcedure : 0xfffff800'01d83090 void nt!PspProcessDelete+0
+    +0x050 ParseProcedure : (null)
+    +0x058 SecurityProcedure : 0xfffff800'01d8bb50 long nt!SeDefaultObjectMethod+0
+    +0x060 QueryNameProcedure : (null)
+    +0x068 OkayToCloseProcedure : (null)
+    ```
+</details>
 
+- **Synchronization**, one of the attributes **visible** to Windows applications, refers to a thread’s ability to synchronize its execution by waiting for an object to change from one state to another.
+  -  A thread can synchronize with executive *job*, *process*, *thread*, *file*, *event*, *semaphore*, *mutex*, and *timer* objects.
+  -  Other executive objects don’t support synchronization.
+  -  An object’s ability to support synchronization is based on three possibilities:
+        - The executive object is a wrapper for a dispatcher object and contains a dispatcher header.
+        - The creator of the object type requested a **default object**, and the object manager provided one.
+        ■ The executive object has an **embedded dispatcher object**, such as an *event* somewhere inside the object body, and the object’s owner supplied its offset to the object manager when registering the object type.
 
-
-
-
-
-
-
-
-
-
+#### Object Methods
 
 
 
