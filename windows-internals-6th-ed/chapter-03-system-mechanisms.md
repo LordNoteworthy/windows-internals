@@ -631,7 +631,7 @@ lkd> dq nt!KiServiceTable
 
 #### Object Headers and Bodies
 
-- Tables below briefly describes the object header fields:
+Tables below briefly describes the object header fields:
 
 | Field |  Purpose |
 |-------|----------|
@@ -765,10 +765,28 @@ lkd> dq nt!KiServiceTable
 
 #### Object Methods
 
+- Object methods comprises a set of **internal routines** that are **automatically called** when an object is accessed, such as when someone opens or closes a handle to an object or when someone attempts to change the protection on an object.
+- The methods that the object manager supports are listed below:
+    | Method | When Method Is Called |
+    |--------|-----------------------|
+    | Open | When an object handle is opened |
+    | Close | When an object handle is closed |
+    | Delete | Before the object manager deletes an object |
+    | Query name | When a thread requests the name of an object, such as a file, that exists in a secondary object namespace |
+    | Parse | When the object manager is searching for an object name that exists in a secondary object namespace |
+    | Dump | Not used |
+    | Okay to close | When the object manager is instructed to close a handle |
+    | Security | When a process reads or changes the protection of an object, such as a file, that exists in a secondary object namespace |
 
+<details><summary>🍊 Examples:</summary>
 
+- The **I/O manager** registers a `close` method for the file object type, and the object manager calls the `close` method each time it closes a file object handle. This `close` method checks whether the process that is closing the file handle owns any outstanding locks on the file and, if so, removes them. Checking for file locks isn’t something the object manager itself can or should do ‼️.
+- The **memory manager**, for example, registers a `delete` method for the section object type that frees the physical pages being used by the section. It also verifies that any internal data structures the memory manager has allocated for a section are deleted before the section object is deleted. The object manager can’t do this work because **it knows nothing** about the internal workings of the memory manager.
+- The `parse` method for device objects is an I/O routine because the **I/O manager** defines the device object type and registers a `parse` method for it. The I/O manager’s parse routine takes the name string and passes it to the appropriate file system, which finds the file on the disk and opens it.
+- *Win32k.sys* registers an `okay-to-close` routine for the **Desktop** and **WindowStation** objects to prevent the behavior of closing handles being used for system purposes.
+</details>
 
-
+#### Object Handles and the Process Handle Table
 
 
 
