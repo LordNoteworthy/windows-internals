@@ -788,9 +788,28 @@ Tables below briefly describes the object header fields:
 
 #### Object Handles and the Process Handle Table
 
+- When a process creates or opens an object **by name**, it receives a **handle** that represents its **access** to the object.
+- Referring to an object by its handle is **faster** than using its name because the object manager can **skip the name lookup** and find the object directly.
+- Processes can also acquire handles to objects by:
+  - **inheriting** handles at process creation time (`CreateProcess(bInheritHandles=TRUE)`) and the handle was marked as **inheritable**: either at the time it was created or afterward by using `SetHandleInformation()`.
+  - or by receiving a **duplicated** handle from another process (`DuplicateHandle()`).
+- Object handles provide additional benefits:
+  - **consistent interface** to reference objects, regardless of their type (file, process, event, ...).
+  - object manager has the **exclusive right to create handles** and to locate an object that a handle refers to ▶️ can scrutinize every user-mode action that affects an object.
 
+<details><summary>🔭 EXPERIMENT: Viewing Open Handles</summary>
 
+- You can view open handles by:
+    - Using **Process Explorer**: Run Process Explorer, and make sure the lower pane is enabled and configured to show open handles (Click on View, Lower Pane View, and then Handles).
+    - **Resource Monitor** also shows open handles to named handles for the processes you select by checking the boxes next to their names Here are the command prompt’s open handles.
+    - Using **handle** the command-line tool from Sysinternals: `C:\>handle -p cmd.exe`.
+    <p align="center"><img src="./assets/process-handles.png" width="500px" height="auto"></p>
+</details>
 
+- An object handle is an index into a process-specific **handle table**, pointed to by the executive process (`EPROCESS`) block.
+- A process’ handle table contains **pointers** to all the objects that the process has opened a handle to.
+- Handle tables are implemented as a **three-level** scheme, similar to the way that the x86 memory management unit implements virtual-to-physical address translation, giving a maximum of more than 16,000,000 handles per process.
+    <p align="center"><img src="./assets/handle-table-architecture.png" width="400px" height="auto"></p>
 
 
 ## Synchronization
