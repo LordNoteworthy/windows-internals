@@ -810,7 +810,82 @@ Tables below briefly describes the object header fields:
 - A process’ handle table contains **pointers** to all the objects that the process has opened a handle to.
 - Handle tables are implemented as a **three-level** scheme, similar to the way that the x86 memory management unit implements virtual-to-physical address translation, giving a maximum of more than 16,000,000 handles per process.
     <p align="center"><img src="./assets/handle-table-architecture.png" width="400px" height="auto"></p>
+- On x86 systems, each handle entry consists of a structure with two **32-bit members**: a pointer to the object (with flags), and the granted **access mask**.
+- On 64-bit systems, a handle table entry is 12 bytes long: a **64-bit pointer** to the object header and a **32-bit access mask**.
+    <p align="center"><img src="./assets/handle-table-entry.png" width="400px" height="auto"></p>
+- The first flag is a `lock` bit, indicating whether the entry is currently in use.
+- The second flag is the **inheritance** designation.
+- The third flag indicates whether closing the object should generate an **audit** message.
+- Finally, the **protect-from-close** bit, stored in an unused portion of the
+access mask, indicates whether the caller is allowed to close this handle.
+- The object manager recognizes references to handles from the **kernel handle table** (`ObpKernelHandleTable`) when the high bit of the handle is set — that is, when references to kernel-handle-table handles have values greater than `0x80000000`.
 
+<details><summary>🔭 EXPERIMENT: Viewing the Handle Table with the Kernel Debugger</summary>
+
+The `!handle` command in the kernel debugger takes three arguments:
+!handle <handle index> <flags> <processid>
+
+```c
+lkd> !handle 0 7 62c
+processor number 0, process 000000000000062c
+Searching for Process with Cid == 62c
+PROCESS fffffa80052a7060
+    SessionId: 1 Cid: 062c Peb: 7fffffdb000 ParentCid: 0558
+    DirBase: 7e401000 ObjectTable: fffff8a00381fc80 HandleCount: 111.
+    Image: windbg.exe
+
+Handle table at fffff8a0038fa000 with 113 Entries in use
+0000: free handle, Entry address fffff8a0038fa000, Next Entry 00000000fffffffe
+0004: Object: fffff8a005022b70 GrantedAccess: 00000003 Entry: fffff8a0038fa010
+Object: fffff8a005022b70 Type: (fffffa8002778f30) Directory
+    ObjectHeader: fffff8a005022b40fffff8a005022b40 (new version)
+        HandleCount: 25 PointerCount: 63
+        Directory Object: fffff8a000004980 Name: KnownDlls
+
+0008: Object: fffffa8005226070 GrantedAccess: 00100020 Entry: fffff8a0038fa020
+Object: fffffa8005226070 Type: (fffffa80027b3080) File
+    ObjectHeader: fffffa8005226040fffffa8005226040 (new version)
+        HandleCount: 1 PointerCount: 1
+        Directory Object: 00000000 Name: \Program Files\Debugging Tools for Windows (x64){HarddiskVolume2}
+```
+</details>
+
+<details><summary>🔭 EXPERIMENT: Searching for Open Files with the Kernel Debugger</summary>
+
+Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to search for open file handles, these tools are not available when looking at a **crash dump** or analyzing a system **remotely**. You can instead use the `!devhandles` command to search for handles opened to files on a specific volume.
+1. First you need to pick the drive letter you are interested in and obtain the pointer to its **Device object**. You can use the `!object` command as shown here:
+    ```c
+    kd> !object \Global??\C:
+    Object: fffff8a00016ea40 Type: (fffffa8000c38bb0) SymbolicLink
+        ObjectHeader: fffff8a00016ea10 (new version)
+        HandleCount: 0 PointerCount: 1
+        Directory Object: fffff8a000008060 Name: C:
+        Target String is '\Device\HarddiskVolume1'
+        Drive Letter Index is 3 (C:)
+    ```
+2. Next use the `!object` command to get the **Device object** of the target volume name:
+    ```c
+    kd> !object \Device\HarddiskVolume1
+    Object: fffffa8001bd3cd0 Type: (fffffa8000ca0750) Device
+    ```
+3. Now you can use the pointer of the Device object with the `!devhandles` command. Each object shown points to a file:
+    ```c
+    !devhandles fffffa8001bd3cd0
+    Checking handle table for process 0xfffffa8000c819e0
+    Kernel handle table at fffff8a000001830 with 434 entries in use
+
+    PROCESS fffffa8000c819e0
+        SessionId: none Cid: 0004 Peb: 00000000 ParentCid: 0000
+        DirBase: 00187000 ObjectTable: fffff8a000001830 HandleCount: 434.
+        Image: System
+
+    0048: Object: fffffa8001d4f2a0 GrantedAccess: 0013008b Entry: fffff8a000003120
+    Object: fffffa8001d4f2a0 Type: (fffffa8000ca0360) File
+        ObjectHeader: fffffa8001d4f270 (new version)
+            HandleCount: 1 PointerCount: 19
+            Directory Object: 00000000 Name: \Windows\System32\LogFiles\WMI\RtBackup\EtwRTEventLog-Application.etl {HarddiskVolume1}
+    ```
+</details>
 
 ## Synchronization
 
