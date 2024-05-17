@@ -904,12 +904,39 @@ Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to 
 
 #### Object Security
 
+- When a process opens a handle to an object, the object manager calls the SRM, sending it the process’ set of desired access rights.
+- The security reference monitor checks whether the object’s security descriptor **permits** the type of access the process is **requesting**.
+- If it does, the reference monitor returns a set of granted access rights that the process is allowed, and the object manager **stores** them in the **object handle** it creates (for quick access checks 👍).
 
+<details><summary>🔭 EXPERIMENT: Looking at Object Security</summary>
 
+- You can look at the various permissions on an object by using either *Process Explorer*, *WinObj*, or *AccessCheck*, which are all tools from Sysinternals.
+- The **Security** tab in *Process Explorer*, *WinObj* cannot decode the specific object directory access rights, so all you’ll see are generic rights: <p align="center"><img src="./assets/object-access-rights.png" width="400px" height="auto"></p>
+- *AccessCheck* to query the security information of any object by using the `–o` switch as shown in the following output:
+    ```
+    C:\Windows\system32>accesschk -o \Sessions\1\BaseNamedObjects
 
+    Accesschk v6.15 - Reports effective permissions for securable objects
+    Copyright (C) 2006-2022 Mark Russinovich
+    Sysinternals - www.sysinternals.com
 
+    \Sessions\1\BaseNamedObjects
+    Type: Directory
+    RW Window Manager\DWM-1
+    RW NT AUTHORITY\SYSTEM
+    RW DESKTOP-GS56V66\ayb
+    RW DESKTOP-GS56V66\ayb-S-1-5-5-0-647525
+    RW BUILTIN\Administrators
+    R  Everyone
+        NT AUTHORITY\RESTRICTED
+    ```
+</details>
 
+- Windows also supports Ex (Extended) versions of the APIs— `CreateEventEx`, `CreateMutexEx`, `CreateSemaphoreEx`— that add another argument for specifying the access mask.
+  - This makes it possible for apps to properly use DACLs to secure their objects without breaking their ability to use the create object APIs to open a handle to them.
+  - Using the open object like `OpenEvent` leads to an inherent **race condition** when dealing with a failure in the open call — which usually is followed by a create call, the `Ex` version of these APIs make it **atomic**.
 
+#### Object Retention
 
 
 
