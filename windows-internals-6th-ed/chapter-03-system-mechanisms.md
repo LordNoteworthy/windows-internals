@@ -887,6 +887,33 @@ Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to 
     ```
 </details>
 
+#### Reserve Objects
+
+- Object creation is **essential** to the normal and desired runtime behavior of any piece of Windows code.
+- Failing to allocate object causes anywhere from **loss of functionality** to **data loss** or **crashes** 🤷.
+- Windows implements two special **reserve objects** to deal with this situation:
+  - **User APC** reserve object and the **I/O Completion** packet reserve object
+- When a user-mode app requests a **User APC** to be targeted to another thread, it uses the `QueueUserApc` API in `Kernelbase.dll` ▶️ `NtQueueUserApcThread`.
+  - In the kernel, this system call attempts to **allocate** a piece of paged pool in which to store the `KAPC` control object structure associated with an APC.
+  - In **low memory** situations, this operation fails, preventing the delivery of the APC 😮‍💨.
+  - To prevent this, on startup, use `NtAllocateReserveObject` to request the kernel to **pre-allocate** the `KAPC` structure. Then the application uses a different system call, `NtQueueUserApcThreadEx`, that contains an extra parameter that is used to store the handle to the reserve object.
+- A similar scenario can occur when applications need **failure-free** delivery of an **I/O completion** port message, or packet.
+    - Typically, packets are sent with the `PostQueuedCompletionStatus` API in `Kernelbase.dll` ▶️ `NtSetIoCompletion`.
+    - Similarly to the user APC, the kernel must **allocate** an **I/O manager** structure to contain the completion-packet information, and if this allocation fails, the packet cannot be created.
+    - With reserve objects, the app can use the `NtAllocateReserveObject` API on startup to have the kernel **pre-allocate** the I/O completion packet, and the `NtSetIoCompletionEx` system call can be used to supply a handle to this reserve object, guaranteeing a success path.
+
+#### Object Security
+
+
+
+
+
+
+
+
+
+
+
 ## Synchronization
 
 - The concept of **mutual exclusion** is a crucial one in OS development It refers to the guarantee that one, and only one, thread can access a particular resource at a time.
