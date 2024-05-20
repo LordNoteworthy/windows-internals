@@ -938,6 +938,37 @@ Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to 
 
 #### Object Retention
 
+- There are two types of objects: **temporary** and **permanent**:
+  - Most objects are temporary — that is, they remain while they are in use and are freed when they are no longer needed.
+  - Permanent objects remain until they are **explicitly** freed.
+- Because most objects are temporary, this section describes how the object manager implements object retention — that is, retaining temporary objects only as long as they are in use and then deleting them.
+- The object manager implements object retention in two phases:
+    1. The first phase is called **name retention**, and it is controlled by the **number of open handles** to an object that exist.
+      - Every time a process opens a handle to an object, the object manager **increments** the **open handle counter** in the object’s header.
+      - As processes finish using the object and close their handles to it, the object manager **decrements** the open handle counter.
+      - When the counter **drops to 0**, the object manager deletes the object’s name from its global namespace.
+    2. The second phase of object retention is to **stop retaining** the objects themselves (that is, to delete them) when they are no longer in use.
+      - Because kernel code usually accesses objects by using **pointers** instead of **handles**, the object manager must also record how many object pointers it has dispensed to kernel processes.
+      - It **increments** a **reference count** for an object each time it gives out a pointer to the object.
+      - When kernel-mode components finish using the pointer, they call the object manager to **decrement** the object’s reference count.
+      - The system also **increments** the **reference count** when it increments the **handle count**, and likewise decrements the reference count when the handle count decrements, because a handle is also a reference to the object that must be tracked.
+<p align="center"><img src="./assets/handle-and-reference-count.png" width="400px" height="auto"></p>
+
+- Ultimately, when the reference count drops to 0, the object manager deletes the object from memory. This deletion has to respect certain rules and also requires cooperation from the caller in certain cases:
+  - Because objects can be present both in **paged** or **nonpaged** pool memory, if a dereference occurs at an IRQL level of **dispatch** or higher and this dereference causes the pointer count to drop to 0, the system would crash if it attempted to immediately free the memory of a paged-pool object. In this scenario, the object manager performs a **deferred delete** operation, queuing the operation on a worker thread running at passive level (IRQL 0).
+  - Another scenario that requires deferred deletion is when dealing with KTM objects. In some scenarios, certain drivers might **hold a lock** related to this object, and attempting to delete the object will result in the system attempting to acquire this **lock**. However, the driver might never get the chance to release its lock, causing a deadlock When dealing with KTM objects, driver developers must use `ObDereferenceObjectDeferDelete` to force deferred deletion regardless of IRQL level Finally, the I/O manager also uses this mechanism as an optimization so that certain I/Os can complete more quickly, instead of waiting for the object manager to delete the object.
+- Windows includes a number of debugging mechanisms that can be enabled to monitor, analyze, and debug issues with handles and objects:
+    |Mechanism  | Enabled By | Kernel Debugger Extension |
+    |-----------|------------|---------------------------|
+    |Handle Tracing Database | Kernel Stack Trace system wide and/or per-process with the User Stack Trace option checked with Gflags.exe. | `!htrace <handle value> <process ID>` |
+    |Object Reference Tracing| Per-process-name(s), or per-object-type-pool-tag(s), with Gflags.exe, under Object Reference Tracing. | `!obtrace <object pointer>` |
+    |Object Reference Tagging| Drivers must call appropriate API, | N/A |
+- **Handle-tracing database** is useful when attempting to understand the use of each handle within an app or the system context. The `!htrace` can display the stack trace captured at the time a specified handle was opened. The stack trace can pinpoint the code that is creating the handle but missed a `CloseHandle()`.
+- The **object-reference-tracing** `!obtrace` extension monitors even more by showing the stack trace for each new handle created as well as each time a handle is referenced by the kernel (and also each time it is opened, duplicated, or inherited) and dereferenced. By analyzing these patterns, misuse of an object at the **system** level can be more easily debugged.
+  - Tracing processes, for example, display references from all the drivers on the system that have registered callback notifications (such as Process Monitor) and help detect rogue or buggy third-party drivers that might be referencing handles in kernel mode but never dereferencing them.
+- For **Object Reference Tagging**, `ObReferenceObjectWithTag` and `ObDereferenceObjectWithTag` should be used by device-driver developers to reference and dereference objects.
+  - Using the `!obtrace` extension just described, the tag for each reference or dereference operation is also shown, which avoids solely using the **call stack** as a mechanism to identify where leaks or under-references might occur, especially if a given call is performed thousands of times by the driver.
+
 
 
 
