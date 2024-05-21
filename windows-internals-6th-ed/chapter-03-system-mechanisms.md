@@ -969,6 +969,62 @@ Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to 
 - For **Object Reference Tagging**, `ObReferenceObjectWithTag` and `ObDereferenceObjectWithTag` should be used by device-driver developers to reference and dereference objects.
   - Using the `!obtrace` extension just described, the tag for each reference or dereference operation is also shown, which avoids solely using the **call stack** as a mechanism to identify where leaks or under-references might occur, especially if a given call is performed thousands of times by the driver.
 
+#### Resource Accounting
+
+- Windows object manager provides a **central** facility for resource accounting.
+  - Each object header contains an attribute called **quota charges** that records how much the object manager subtracts from a process’ allotted paged and/or nonpaged pool quota when a thread in the process opens a handle to the object.
+- Each process on Windows points to a quota structure that records the **limits** and **current** values for nonpaged-pool, paged-pool, and page-file usage.
+
+#### Object Names
+
+- An important consideration in creating a multitude of objects is the need to devise a successful system for keeping track of them.
+- The OM allows names to be assigned to objects:
+  - So it can distinguish one object from another;
+  - and can find an object by looking up its name.
+
+#### Object Directories
+
+- The object directory object (😵‍💫 ) is the OM’s means for supporting this **hierarchical** naming structure. This object is analogous to a FS directory and contains the **names of other objects**, possibly even other **object directories**.
+- The table below lists the standard object directories found on all Windows systems and what types of objects have their
+names stored there.
+    |Directory | Types of Object Names Stored |
+    |----------|------------------------------|
+    |\ArcName | Symbolic links mapping ARC-style paths to NT-style paths.
+    |\BaseNamedObjects | Global mutexes, events, semaphores, waitable timers, jobs, ALPC ports, symbolic links, and section objects
+    |\Callback | Callback objects. |
+    |\Device | Device objects. |
+    |\Driver | Driver objects. |
+    |\FileSystem | File-system driver objects and file-system-recognizer device objects. The Filter Manager also creates its own device objects under the Filters subkey. |
+    |\GLOBAL?? | MS-DOS device names. (The \Sessions\0\DosDevices\<LUID>\Global directories are symbolic links to this directory) |
+    |\KernelObjects | Contains event objects that signal low resource conditions, memory errors, the completion of certain operating system tasks, as well as objects representing Sessions. |
+    |\KnownDlls | Section names and path for known DLLs (DLLs mapped by the system at startup time). |
+    |\KnownDlls32 | On a 64-bit Windows installation, \KnownDlls contains the native 64-bit binaries, so this directory is used instead to store Wow64 32-bit versions of those DLLs. |
+    |\Nls | Section names for mapped national language support tables. |
+    |\ObjectTypes | Names of types of objects. |
+    |\PSXSS | If Subsystem for UNIX Applications is enabled (through installation of the SUA component), this contains ALPC ports used by Subsystem for UNIX Applications. |
+    |\RPC Control | ALPC ports used by remote procedure calls (RPCs), and events used by Conhost exe as part of the console isolation mechanism. |
+    |\Security | ALPC ports and events used by names of objects specific to the security subsystem.|
+    |\Sessions | Per-session namespace directory.|
+    |\UMDFCommunicationPorts | ALPC ports used by the User-Mode Driver Framework (UMDF).|
+    |\Windows  | Windows subsystem ALPC ports, shared section, and window stations.|
+
+- ⚠️ Because the base kernel objects such as mutexes, events, semaphores, waitable timers, and sections have their names stored in a **single object directory**, no two of these objects can have the **same name**, even if they are of a **different type**.
+- Although object names in **different sessions** are protected from each other, there’s no standard protection inside the **current session** namespace that can be set with the standard Windows API ▶️ So this enables *object name squatting* acttacks in which the unprivileged app creates the object **before** the privileged app, thus **denying access** to the legitimate app.
+- Windows exposes the concept of a **private namespace** to alleviate this issue.
+  - It allows user-mode app to create object directories through the `CreatePrivateNamespace` API and associate these directories with **boundary descriptors**, which are special data structures protecting the directories.
+
+<details><summary>🔭 EXPERIMENT: Looking at the Base Named Objects</summary>
+
+You can see the list of base objects that have names with the WinObj tool from `Sysinternals`. Run `Winobj.exe`, and click on `\BaseNamedObjects`, as shown here:
+<p align="center"><img src="./assets/winobj-base-named-objects.png" width="500px" height="auto"></p>
+</details>
+
+- The OM implements an object called a **symbolic link object**, which performs a cross-link function for object names in its object namespace, similar to what file symlinks on NTFS or Unix systems.
+- One place in which the executive uses symbolic link objects is in translating *MS-DOS* style device names into Windows internal device names.
+  - In Windows, a user refers to hard disk drives using the names `C:`, `D:`, and so on and serial ports as `COM1`, `COM2`, and so on.
+  - The Windows subsystem makes these symbolic link objects protected, global data by placing them in the OM namespace under the `\Global??` directory.
+
+#### Session Namespace
 
 
 
