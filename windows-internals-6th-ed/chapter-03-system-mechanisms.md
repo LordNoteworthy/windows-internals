@@ -1026,7 +1026,31 @@ You can see the list of base objects that have names with the WinObj tool from `
 
 #### Session Namespace
 
+- Services have access to the **global** namespace, a namespace that serves as the first instance of the namespace. Additional sessions are given a **session-private** view of the namespace known as a **local** namespace.
+- The parts of the namespace that are localized for each session include `\DosDevices`, `\Windows`, and `\BaseNamedObjects`.
+  - The global `\DosDevices` directory is named `\Global??` and is the directory to which `\DosDevices` points, and local `\DosDevices` directories are identified by the **logon session ID**.
+  - The `\Windows` directory is where `Win32k.sys` inserts the interactive window station created by Winlogon: `\WinSta0`. A Terminal Services environment can support multiple interactive users, but each user needs an individual version of `WinSta0` to preserve the illusion that he is accessing the predefined interactive window station in Windows.
+  - Apps and the system create shared objects in `\BaseNamedObjects`, including events, mutexes, and memory sections.
+- The OM implements a **local** namespace by creating the private versions of the three directories mentioned under a directory associated with the user’s session under `\Sessions\n` (where n is the session identifier).
+- Th OM provides the special override “`\Global`” that an app can prefix to any object name to access the **global namespace**.
+  - For example, an app in session two opening an object named` \Global\ApplicationInitialized` is directed to `\BaseNamedObjects\ApplicationInitialized` instead of `\Sessions\2\BaseNamedObjects\ApplicationInitialized`.
+- Session directories are isolated from each other, and **administrative privileges** are required to create a global object (except for section objects).
+  - A special privilege named *create global object* is verified before allowing such operations.
 
+<details><summary>🔭 EXPERIMENT: Viewing Namespace Instancing</summary>
+
+- You can see the separation between the session 0 namespace and other session namespaces as soon as you log in. The reason you can is that the first **console user** is logged in to **session 1** (while **services** run in **session 0**).
+- Run `Winobj.exe`, and click on the `Sessions` directory. You’ll see a subdirectory with a numeric name for each active session:
+<p align="center"><img src="./assets/object-manager-local-namespace.png" width="500px" height="auto"></p>
+</details>
+
+#### Object Filtering
+
+- Windows includes a filtering model in the object manager, similar to the file system minifilter model.
+- One of the primary benefits of this filtering model is the ability to use the **altitude** concept that these existing filtering technologies use, which means that multiple drivers can filter object-manager events at appropriate locations in the filtering **stack**.
+    - Drivers are permitted to intercept calls such as `NtOpenThread` and `NtOpenProcess` and even to modify the access masks being requested from the process manager
+- Drivers are able to take advantage of both `pre` and `post` **callbacks**, allowing them to prepare for a certain operation before it occurs, as well as to react or finalize information after the operation has occurred.
+  - These callbacks can be registered with the `ObRegisterCallbacks` API and unregistered with the `ObUnregisterCallbacks` API.
 
 ## Synchronization
 
