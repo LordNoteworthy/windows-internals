@@ -1567,6 +1567,7 @@ Process=fffffa8004ffcb30 ('winlogon.exe')
 SRV:fffffa80054dfb30 (m:0, p:0, l:0) <-> CLI:fffffa80054dfe60 (m:0, p:0, l:0),
 Process=fffffa80054de060 ('dwm.exe')
 ```
+</details>
 
 ## Kernel Event Tracing
 
@@ -1585,9 +1586,27 @@ Process=fffffa80054de060 ('dwm.exe')
 - Wow64 (Win32 emulation on 64-bit Windows) refers to the software that permits the execution of 32-bit x86 applications on 64-bit Windows.
 - implemented as a set of **user-mode DLLs**, with some support from the kernel for creating 32-bit versions of what would normally only be 64-bit data ­structures, such as the PEB and TEB.
 ­- Here are the user-mode DLLs responsible for Wow64:
-    - `Wow64.dll` Manages **process** and **thread** **creation**, and hooks **exception-dispatching** and base **system calls** exported by `Ntoskrnl.exe`. It also implements **file-system redirection** and **registry redirection**.
+    - `Wow64.dll` Manages **process** and **thread creation**, and hooks **exception-dispatching** and base **system calls** exported by `Ntoskrnl.exe`. It also implements **file-system redirection** and **registry redirection**.
     - `Wow64Cpu.dll` Manages the **32-bit CPU context** of each running **thread** inside Wow64, and provides **processor architecture-specific** support for switching CPU mode from 32-bit to 64-bit and vice versa.
     - `Wow64Win.dll` Intercepts the **GUI system calls** exported by `Win32k.sys`.
     - `IA32Exec.bin` and `Wowia32x.dll` on **IA64** systems Contain the IA-32 software­ **emulator** and its interface library.
 
 <p align="center"><img src="assets/wow64-arch.png" width="400px" height="auto"></p>
+
+- **Wow64 Process Address Space Layout**:
+  - Wow64 processes can run with 2 GB or 4 GB of virtual space (depending on the **large-address-aware** flag).
+- **System Calls**:
+  - Wow64 hooks all the code paths where 32-bit code would **transition** to the native 64-bit system or when the native system needs to call into 32-bit user-mode code.
+  - During process creation, the process manager maps into the process address space the **native** 64-bit `Ntdll.dll`, as well as the **32-bit** `Ntdll.dll` for Wow64 processes. When the loader initialization is called, it calls the Wow64 initialization code inside `Wow64.dll`. Wow64 then sets up the **startup context** required by the 32-bit Ntdll, **switches the CPU mode** to 32-bits, and starts executing the **32-bit loader**. From this point onward, execution continues as if the process is running on a native 32-bit system.
+  - Wow64 transitions to native 64-bit mode, **captures the parameters** associated with the system call (converting 32-bit pointers to 64-bit pointers), and issues the corresponding native 64-bit system call. When the native
+system call returns, Wow64 converts any output parameters if necessary from 64-bit to 32-bit formats before returning to 32-bit mode ✨.
+- **Exception Dispatching**:
+  - Wow64 hooks exception dispatching through Ntdll’s `KiUserExceptionDispatcher`.
+  - Whenever the 64-bit kernel is about to dispatch an exception to a Wow64 process, Wow64 captures the native exception and context record in user mode and then **prepares a 32-bit exception** and context record and dispatches it the same way the native 32-bit kernel would.
+- **User APC Dispatching**:
+  - Wow64 also hooks user-mode APC delivery through Ntdll’s `KiUserApcDispatcher`.
+  - Whenever the 64-bit kernel is about to dispatch a user-mode APC to a Wow64 process, it maps the 32-bit APC address to a higher range of 64-bit address space. The 64-bit Ntdll then captures the native APC and context record in user mode and **maps it back to a 32-bit address**.
+  - It then prepares a 32-bit usermode APC and context record and dispatches it the same way the native 32-bit kernel would.
+- **Console Support**:
+  - Because console support is implemented in user mode by `Csrss.exe`, of which **only a single native** binary exists, 32-bit applications would be unable to perform console I/O while on 64-bit Windows.
+  - Similarly to how a special `rpcrt4.dll` exits to thunk 32-bit to 64-bit RPCs, the 32-bit Kernel dll for Wow64 contains special code to call into Wow, for **thunking parameters** during interaction with `Csrss` and` Conhost.exe`.
