@@ -1571,7 +1571,7 @@ Process=fffffa80054de060 ('dwm.exe')
 
 ## Kernel Event Tracing
 
-- ETW (Event Tracing for Windows) is a common infrastructure in the kernel that provides ability to trace various components of the Kernel and its device drivers for use in system troubleshooting.
+- ETW (*Event Tracing for Windows*) is a common infrastructure in the kernel that provides ability to trace various components of the Kernel and its device drivers for use in system troubleshooting.
 - An application that uses ETW falls into one or more of three categories:
   - **Controller**: starts and stops logging sessions and manages buffer pools.
   - **Provider**: defines GUIDs for the event classes it can produce traces for and registers them with ETW.
@@ -1609,4 +1609,24 @@ system call returns, Wow64 converts any output parameters if necessary from 64-b
   - It then prepares a 32-bit usermode APC and context record and dispatches it the same way the native 32-bit kernel would.
 - **Console Support**:
   - Because console support is implemented in user mode by `Csrss.exe`, of which **only a single native** binary exists, 32-bit applications would be unable to perform console I/O while on 64-bit Windows.
-  - Similarly to how a special `rpcrt4.dll` exits to thunk 32-bit to 64-bit RPCs, the 32-bit Kernel dll for Wow64 contains special code to call into Wow, for **thunking parameters** during interaction with `Csrss` and` Conhost.exe`.
+  - Similarly to how a special `rpcrt4.dll` exits to thunk 32-bit to 64-bit RPCs, the 32-bit Kernel dll for Wow64 contains special code to call into Wow, for **thunking parameters** during interaction with `Csrss` and `Conhost.exe`.
+- **User Callbacks**:
+    - Wow64 intercepts all callbacks from the kernel into user mode Wow64 treats such calls as **system calls**.
+    - However, the data conversion is done in the reverse order: **input** parameters are converted from **64 to 32 bits**, and **output** parameters are converted when the callback returns from **32 to 64 bits**.
+- **File System Redirection**:
+  -  Wow64, as it hooks all the system calls, translates all the path-related APIs and replaces the path name of:
+     - `\Windows\System32` ▶️ `\Windows\Syswow64`.
+     - `\Windows\LastGood` ▶️ `\Windows\LastGood\syswow64`.
+     - `\Windows\Regedit.exe` ▶️ `\Windows\syswow64\Regedit.exe`.
+     - `%PROGRAMFILES%` ▶️ `\Program Files (x86)` for 32-bits apps, and `\Program Files` for 64-bits apps.
+     - `CommonProgramFiles` and `CommonProgramFiles (x86)` also exist, which always point to the 32-bit location;
+     - while `ProgramW6432` and `CommonProgramW6432` point to the 64-bit locations unconditionally.
+   - `\Windows\Sysnative`, allows any I/Os originating from a 32-bit app to this directory to be **exempted** from file redirection. This directory doesn’t actually exist—it is a **virtual path** that allows access to the real `System32` directory, even from an app running under Wow64.
+  - Directories exempted from being redirected such that access attempts to them made by 32-bit app actually access the real one:
+    - `%indir%\system32\drivers\etc`
+    - `%windir%\system32\spool`
+    - `%windir%\system32\catroot and %windir%\system32\catroot2`
+    - `%windir%\system32\logfiles`
+    - `%windir%\system32\driverstore`
+  - Wow64 provides a mechanism to control the FS redirection built into Wow64 on a **per-thread** basis through the `Wow64DisableWow64FsRedirection` and `Wow64RevertWow64FsRedirection` functions.
+- **Registry Redirection**:
