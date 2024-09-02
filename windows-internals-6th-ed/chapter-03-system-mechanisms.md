@@ -1590,6 +1590,7 @@ Process=fffffa80054de060 ('dwm.exe')
     - `Wow64Cpu.dll` Manages the **32-bit CPU context** of each running **thread** inside Wow64, and provides **processor architecture-specific** support for switching CPU mode from 32-bit to 64-bit and vice versa.
     - `Wow64Win.dll` Intercepts the **GUI system calls** exported by `Win32k.sys`.
     - `IA32Exec.bin` and `Wowia32x.dll` on **IA64** systems Contain the IA-32 software­ **emulator** and its interface library.
+- Wow64 processes can load only **32-bit DLLs** and can’t load native **64-bit DLLs**. Likewise, native 64-bit processes **can’t load 32-bit** DLLs 🤓.
 
 <p align="center"><img src="assets/wow64-arch.png" width="400px" height="auto"></p>
 
@@ -1620,7 +1621,7 @@ system call returns, Wow64 converts any output parameters if necessary from 64-b
      - `\Windows\Regedit.exe` ▶️ `\Windows\syswow64\Regedit.exe`.
      - `%PROGRAMFILES%` ▶️ `\Program Files (x86)` for 32-bits apps, and `\Program Files` for 64-bits apps.
      - `CommonProgramFiles` and `CommonProgramFiles (x86)` also exist, which always point to the 32-bit location;
-     - while `ProgramW6432` and `CommonProgramW6432` point to the 64-bit locations unconditionally.
+     - `ProgramW6432` and `CommonProgramW6432` point to the 64-bit locations **unconditionally**.
    - `\Windows\Sysnative`, allows any I/Os originating from a 32-bit app to this directory to be **exempted** from file redirection. This directory doesn’t actually exist—it is a **virtual path** that allows access to the real `System32` directory, even from an app running under Wow64.
   - Directories exempted from being redirected such that access attempts to them made by 32-bit app actually access the real one:
     - `%indir%\system32\drivers\etc`
@@ -1630,3 +1631,49 @@ system call returns, Wow64 converts any output parameters if necessary from 64-b
     - `%windir%\system32\driverstore`
   - Wow64 provides a mechanism to control the FS redirection built into Wow64 on a **per-thread** basis through the `Wow64DisableWow64FsRedirection` and `Wow64RevertWow64FsRedirection` functions.
 - **Registry Redirection**:
+  - Wow64 intercepts all the system calls that open registry keys and retranslates the key path to point it to the Wow64 view of the registry.
+  - Wow64 splits the registry at these points:
+    `- HKLM\SOFTWARE`
+    - `HKEY_CLASSES_ROOT`
+    - Many of the subkeys are actually **shared** between 32-bit and 64-bit apps — that is, not the entire hive is split ⚠️.
+    - Under each of these keys, Wow64 creates a key called `Wow6432Node`. Under this key is stored 32-bit configuration information. All other portions of the registry are shared between 32-bit and 64-bit apps (for example, `HKLM\SYSTEM`)
+    - `HKEY_WOW64_64KEY` **explicitly** opens a 64-bit key from either a 32-bit or 64-bit app, and disables the `REG_SZ` or `REG_EXPAND_SZ` interception.
+    - `KEY_WOW64_32KEY` **explicitly** opens a 32-bit key from either a 32-bit or 64-bit app.
+- **I/O Control Requests**:
+  - The kernel driver is expected to convert the associated pointer-dependent structures sent via (`DeviceIOControl`). Drivers can call the `IoIs32bitProcess` to detect whether or not an I/O request originated from a Wow64 process.
+
+## User-Mode Debugging
+
+- Support for user-mode debugging is split into three different modules:
+  - The first one is located in the **executive** itself and has the prefix `Dbgk`, which stands for **Debugging Framework**.
+    - It provides the necessary internal functions for registering and listening for debug events, managing the debug object, and packaging the information for consumption by its user-mode counterpart.
+  - The user-mode component that talks directly to `Dbgk` is located in the native system library, `Ntdll.dll`, under a set of APIs that begin with the prefix `DbgUi`.
+    - These APIs are responsible for **wrapping** the underlying **debug object** implementation (which is opaque), and they allow all subsystem apps to use debugging by wrapping their own APIs around the `DbgUi` implementation.
+  - Finally, the third component in user-mode debugging belongs to the **subsystem DLLs**:
+    - It is the exposed, documented API (located in `KernelBase.dll`) that each subsystem supports for performing debugging of other apps.
+
+### Kernel Support
+
+- The kernel supports user-mode debugging through an object mentioned earlier, the **debug object**.
+- The debug object itself is a simple construct, composed of:
+  - a **series of flags** that determine **state**,
+  - an **event** to notify any waiters that debugger events are present,
+  - a **doubly linked list** of debug events waiting to be processed,
+  - and a fast **mutex** used for locking the object.
+- Each debugged process has a **debug port** member in its structure pointing to this debug object.
+- Examples of KM debugging events: `DbgKmExceptionApi`(An exception has occurred), `DbgKmLoadDllApi`(A DLL was loaded), etc.
+- The basic model for the framework is a simple matter of **producers** code in the kernel that generates the debug events in the previous table — and **consumers** —the debugger waiting on these events and acknowledging their
+receipt.
+
+### Native Support
+
+- The functions that this component provides are mostly analogous to the Windows API functions and related **system calls**.
+- Internally, the code also provides the functionality required to to **create a debug object** associated with the thread.
+- The handle to a debug object that is created is never **exposed**. It is saved instead in the TEB of the debugger thread that performs the attachment in `DbgSsReserved[1]`.
+- When a debugger attaches to a process, it expects the process to be broken into - that is, an `int 3` (breakpoint) operation should have happened, generated by a thread injected into the process.
+- If this didn’t happen, the debugger would never actually be able to take control of the process and would merely see debug events flying by.
+- `Ntdll.dll` is responsible for creating and injecting that thread into the target process.
+
+### Windows Subsystem Support
+
+- This component provides the documented Windows APIs. Apart from this trivial **conversion** of one function name to another, there is one important management job that this side of the debugging infrastructure is responsible for: managing the **duplicated file and thread handles**.
