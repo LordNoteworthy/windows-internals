@@ -1662,7 +1662,7 @@ system call returns, Wow64 converts any output parameters if necessary from 64-b
   - and a fast **mutex** used for locking the object.
 - Each debugged process has a **debug port** member in its structure pointing to this debug object.
 - Examples of KM debugging events: `DbgKmExceptionApi`(An exception has occurred), `DbgKmLoadDllApi`(A DLL was loaded), etc.
-- The basic model for the framework is a simple matter of **producers** code in the kernel that generates the debug events in the previous table — and **consumers** —the debugger waiting on these events and acknowledging their
+- The basic model for the framework is a simple matter of **producers** code in the kernel that generates the debug events in the previous table - and **consumers** - the debugger waiting on these events and acknowledging their
 receipt.
 
 ### Native Support
@@ -1677,3 +1677,34 @@ receipt.
 ### Windows Subsystem Support
 
 - This component provides the documented Windows APIs. Apart from this trivial **conversion** of one function name to another, there is one important management job that this side of the debugging infrastructure is responsible for: managing the **duplicated file and thread handles**.
+
+## Image Loader
+
+- The image loader lives in the user-mode system DLL `Ntdll.dll` (`Ldr` APIs) and not in the kernel library.
+- `Ntdll.dll` is always loaded and that it is the **first** piece of code to run in user mode as part of a new app.
+- Some of the main tasks the loader is responsible for include these:
+  - Initializing the user-mode state for the app, such as creating the **initial heap** and setting up the **thread-local storage** (TLS) and **fiber-local storage** (FLS) slots
+  - Parsing the **import table** (IAT) of the app to look for all DLLs that it requires (and then **recursively** parsing the IAT of each DLL), followed by parsing the **export table** of the DLLs to make sure the function is actually present (Special forwarder entries can also redirect an export to yet another DLL )/
+  - **Loading and unloading** DLLs at run time, as well as on demand, and maintaining a list of all loaded modules (the module database).
+  - Allowing for run-time patching (called **hotpatching**) support.
+  - Handling **manifest files**.
+  - Reading the **application compatibility database** for any shims, and loading the shim engine DLL if required.
+  - Enabling support for **API sets** and **API redirection**, a core part of the **MinWin** refactoring effort.
+  - Enabling dynamic runtime compatibility mitigations through the **SwitchBranch** mechanism.
+
+### Early Process Initialization
+
+- Let's start by covering the work that takes place in **user mode**, independent of any subsystem, as soon as the first user-mode instruction starts execution. When a process starts, the loader performs the following steps:
+  1. Build the image path name for the app, and query the **Image File Execution Options** key for the app, as well as the **DEP** and **SEH** validation linker settings.
+  2. Look inside the executable’s header to see whether it is a .NET application (specified by the presence of a .NET-specific image directory).
+  3. Initialize the **National Language Support** (NLS for internationalization) tables for the process.
+  4. Initialize the **Wow64** engine if the image is 32-bit and is running on 64-bit Windows.
+  5. Load any configuration options specified in the executable’s header. These options, which a developer can define when compiling the application, control the behavior of the executable.
+  6. Set the affinity mask if one was specified in the executable header.
+  7. Initialize **FLS** and **TLS**
+  8. Initialize the **heap manager** for the process, and create the **first process heap**.
+  9. Allocate an **SxS** (*Side-by-Side* Assembly)/Fusion **activation context** for the process. This allows the system to use the appropriate DLL version file, instead of defaulting to the DLL that shipped with the OS.
+  10. Open the `\KnownDlls` object directory, and build the **known DLL** path. For a Wow64 process, `\KnownDlls32` is used instead.
+  11. Determine the process' current directory and **default load path** (used when loading images and opening files).
+  12. Build the first loader data table entries for the app executable and `Ntdll.dll`, and insert them into the module database.
+- ▶️ At this point, the image loader is ready to start parsing the import table of the executable and start loading any DLLs that were dynamically linked during the compilation of the app. 
