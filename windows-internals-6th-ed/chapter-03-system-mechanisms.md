@@ -1707,4 +1707,34 @@ receipt.
   10. Open the `\KnownDlls` object directory, and build the **known DLL** path. For a Wow64 process, `\KnownDlls32` is used instead.
   11. Determine the process' current directory and **default load path** (used when loading images and opening files).
   12. Build the first loader data table entries for the app executable and `Ntdll.dll`, and insert them into the module database.
-- ▶️ At this point, the image loader is ready to start parsing the import table of the executable and start loading any DLLs that were dynamically linked during the compilation of the app. 
+- ▶️ At this point, the image loader is ready to start parsing the import table of the executable and start loading any DLLs that were dynamically linked during the compilation of the app.
+
+### DLL Name Resolution and Redirection
+
+- Name resolution is the process by which the system **converts** the name of a PE-format binary to a physical file in situations where the caller has not specified or cannot specify a unique file identity.
+- When resolving binary dependencies, the basic Windows app model locates files in a **search path**: a **list of locations** that is searched sequentially for a file with a matching base name.
+- However, the placement of the **current directory** in this ordering allowed load operations on system binaries to be overridden by placing **malicious binaries** with the same base name in the app’s current directory.
+- To prevent security risks associated with this behavior, a feature known as **safe DLL search** mode was added to the path search computation and, starting with *Windows XP SP2*  enabled by default for all processes. Under safe search mode, the **current directory** is **moved behind** the three system directories, resulting in the following path ordering:
+  1. The directory from which the application was launched
+  2. The native Windows system directory (for example, `C:\Windows\System32`)
+  3. The 16-bit Windows system directory (for example, `C:\Windows\System`)
+  4. The Windows directory (for example, C:\Windows)
+  5. The current directory at application launch time
+  6. Any directories specified by the `%PATH%` environment variable.
+- Apps can change specific path elements by editing the `%PATH%` variable using the `SetEnvironmentVariable` API, changing the current directory using the `SetCurrentDirectory` API, or using the `SetDllDirectory` API to specify a DLL directory for the process. When a DLL directory is specified, the loader ignores the safe DLL search mode setting for the process
+- Callers can also modify the DLL search path for specific load operations by supplying the `LOAD_WITH_ALTERED_SEARCH_PATH` flag to the` LoadLibraryEx` API.
+  - When this flag is supplied and the DLL name supplied to the API specifies a **full path** string, the path containing the DLL file is used in place of the app directory when computing the search path for the operation.
+
+#### DLL Name Redirection
+
+- Before attempting to **resolve a DLL name** string to a file, the loader attempts to apply DLL name **redirection rules**.
+- These redirection rules are used to extend or override portions of the DLL namespace—which normally corresponds to the Win32 file system namespace—to extend the Windows application model.
+- In order of application, they are:
+  - **MinWin API Set Redirection**: The API set mechanism is designed to allow the Windows team to change the binary that exports a given system API in a manner that is transparent to apps.
+  - **.LOCAL Redirection**: allows apps to redirect all loads of a specific DLL base name, regardless of whether a full path is specified, to a local copy of the DLL in the app directory.
+  - **Fusion (SxS) Redirection**L Fusion (also referred to as *side-by-side*, or SxS) is an extension to the Windows application model that allows components to express more detailed binary **dependency** information (usually versioning information) by embedding binary resources known as **manifests**.
+    - The Fusion runtime tool reads embedded dependency information from a binary’s **resource section** using the Windows resource loader, and it packages the dependency information into lookup structures known as **activation contexts**.
+    - The per-thread activation context stack is managed both explicitly, via the `ActivateActCtx` and `DeactivateActCtx` APIs, and implicitly by the system at certain points, such as when the DLL main routine of a binary with embedded dependency information is called.
+  - **Known DLL Redirection**: is a mechanism that **maps specific DLL** base names to **files** in the system directory, preventing the DLL from being replaced with an alternate version in a different location.
+
+### Loaded Module Database
