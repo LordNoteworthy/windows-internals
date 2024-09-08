@@ -1732,9 +1732,74 @@ receipt.
 - In order of application, they are:
   - **MinWin API Set Redirection**: The API set mechanism is designed to allow the Windows team to change the binary that exports a given system API in a manner that is transparent to apps.
   - **.LOCAL Redirection**: allows apps to redirect all loads of a specific DLL base name, regardless of whether a full path is specified, to a local copy of the DLL in the app directory.
-  - **Fusion (SxS) Redirection**L Fusion (also referred to as *side-by-side*, or SxS) is an extension to the Windows application model that allows components to express more detailed binary **dependency** information (usually versioning information) by embedding binary resources known as **manifests**.
+  - **Fusion (SxS) Redirection**: Fusion (also referred to as *side-by-side*, or SxS) is an extension to the Windows application model that allows components to express more detailed binary **dependency** information (usually versioning information) by embedding binary resources known as **manifests**.
     - The Fusion runtime tool reads embedded dependency information from a binary’s **resource section** using the Windows resource loader, and it packages the dependency information into lookup structures known as **activation contexts**.
     - The per-thread activation context stack is managed both explicitly, via the `ActivateActCtx` and `DeactivateActCtx` APIs, and implicitly by the system at certain points, such as when the DLL main routine of a binary with embedded dependency information is called.
   - **Known DLL Redirection**: is a mechanism that **maps specific DLL** base names to **files** in the system directory, preventing the DLL from being replaced with an alternate version in a different location.
 
 ### Loaded Module Database
+
+- The loader maintains a list of all modules (**DLLs** as well as the **primary executable**) that have been loaded by a process.
+- This information is stored in a per-process structure called the **process environment block**, or *PEB*, namely, in a substructure identified by `Ldr` and called `PEB_LDR_DATA`.
+- In the structure, the loader maintains three **doubly-linked** lists, all containing the same information but **ordered differently** (either by load order, memory location, or initialization order).
+- These lists contain structures called loader data table entries (`LDR_DATA_TABLE_ENTRY`) that store information about each **module**.
+
+<details><summary>🔭 EXPERIMENT: Dumping the Loaded Modules Database</summary>
+
+- You can look at the PEB of the current process with the `!peb` command:
+```sh
+0: kd> !peb
+PEB at 000007fffffda000
+InheritedAddressSpace: No
+ReadImageFileExecOptions: No
+BeingDebugged: No
+ImageBaseAddress: 00000000ff590000
+Ldr 0000000076e72640
+Ldr.Initialized: Yes
+Ldr.InInitializationOrderModuleList: 0000000000212880 . 0000000004731c20
+Ldr.InLoadOrderModuleList: 0000000000212770 . 0000000004731c00
+Ldr.InMemoryOrderModuleList: 0000000000212780 . 0000000004731c10
+Base TimeStamp Module
+ff590000 4ce7a144 Nov 20 11:21:56 2010 C:\Windows\Explorer.EXE
+76d40000 4ce7c8f9 Nov 20 14:11:21 2010 C:\Windows\SYSTEM32\ntdll.dll
+76870000 4ce7c78b Nov 20 14:05:15 2010 C:\Windows\system32\kernel32.dll
+7fefd2d0000 4ce7c78c Nov 20 14:05:16 2010 C:\Windows\system32\KERNELBASE.dll
+7fefee20000 4a5bde6b Jul 14 02:24:59 2009 C:\Windows\system32\ADVAPI32.dll
+```
+
+- You can also analyze each module entry on its own by going through the module list and then dumping the data at each address, formatted as a `LDR_DATA_TABLE_ENTRY`
+structure Instead of doing this for each entry, however, WinDbg can do most of the work by using the `!list` extension and the following syntax:
+```sh
+> !list -t ntdll!_LIST_ENTRY.Flink -x "dt ntdll!_LDR_DATA_TABLE_ENTRY @$extret\"" 001c1cf8
++0x000 InLoadOrderLinks : _LIST_ENTRY [ 0x1c1d68 - 0x76fd4ccc ]
++0x008 InMemoryOrderLinks : _LIST_ENTRY [ 0x1c1d70 - 0x76fd4cd4 ]
++0x010 InInitializationOrderLinks : _LIST_ENTRY [ 0x0 - 0x0 ]
++0x018 DllBase : 0x00d80000
++0x01c EntryPoint : 0x00d831ed
++0x020 SizeOfImage : 0x28000
++0x024 FullDllName : _UNICODE_STRING "C:\Windows\notepad.exe"
++0x02c BaseDllName : _UNICODE_STRING "notepad.exe"
++0x034 Flags : 0x4010
+```
+</details>
+
+- Although this section covers the user-mode loader in `Ntdll.dll`, note that the **kernel** also employs its **own loader** for drivers and dependent DLLs, with a similar loader entry structure.
+- Likewise, the kernel-mode loader has its own database of such entries, which is directly accessible through the `PsActiveModuleList` global data variable.
+- To dump the kernel’s loaded module database, you can use a similar `!list` command as shown in the preceding experiment by replacing the pointer at the end of the command with “`nt!PsActiveModuleList`”.
+
+### Import Parsing
+
+- During this step, the loader will do the following:
+  1. Load each DLL referenced in the **import table** (IT) of the process’ executable image.
+  2. Check whether the DLL has already been loaded by checking the module database. If it doesn’t find it in the list, the loader opens the DLL and maps it into memory.
+  3. During the mapping operation, the loader first looks at the various paths where it should attempt to find this DLL, as well as whether this DLL is a “known DLL,” meaning that the system has already loaded it at startup and provided a global memory mapped file for accessing it. Certain deviations from the standard lookup algorithm can also occur, either through the use of a .local file or through a manifest file, which can specify a redirected DLL to use to guarantee a specific version.
+  4. After the DLL has been found on disk and mapped, the loader checks whether the kernel has loaded it somewhere else (**relocation**). If the loader detects relocation, it parses the relocation information in the DLL and performs the operations required. If no relocation information is present, DLL loading fails.
+  5. The loader then creates a loader **data table entry** for this DLL and inserts it into the database.
+  6. After a DLL has been mapped, the process is repeated for this DLL to parse its IT and all its **dependencies**.
+  7. After each DLL is loaded, the loader parses the **IAT** to look for specific functions that are being imported. Usually this is done by name, but it can also be done by ordinal (an index number). For each name, the loader parses the **export table** of the imported DLL and tries to locate a match. If no match is found, the operation is aborted.
+  8. The IT of an image can also be bound. This means that at link time, the developers already assigned **static** addresses pointing to imported functions in external DLLs. This removes the need to do the lookup for each name, but it assumes that the DLLs the app will use will always be located at the **same address**. Because Windows uses address space randomization (Address Space Load Randomization, or ASLR), this is usually not the case for system apps and libraries.
+  9. The export table of an imported DLL can use a **forwarder** entry, meaning that the actual function is implemented in another DLL. This must essentially be treated like an import or dependency, so after parsing the export table, each DLL referenced by a forwarder is also loaded and the loader goes back to step 1.
+- After all **imported DLLs** (and their own dependencies, or imports) have been **loaded**, all the required **imported functions** have been **looked up and found**, and all **forwarders** also have been **loaded and processed**, the step is complete: all dependencies that were defined at compile time by the app and its various DLLs have now been fulfilled.
+- During execution, **delayed** dependencies (called **delay load**), as well as run-time operations (such as calling `LoadLibrary`) can call into the loader and essentially repeat the same tasks.
+
+### Post-Import Process Initialization
