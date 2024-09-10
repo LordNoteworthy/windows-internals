@@ -239,7 +239,7 @@ Entry 4 - Interrupt (0x2) Device Exclusive (0x1)
 ```
 
 > ‼️ Windows and Real-Time Processing
-> Because Windows doesn’t enable controlled prioritization of device IRQs and user-level applications execute only when a processor’s IRQL is at passive level, Windows **isn’t** typically suitable as a **real-time OS**.
+> Because Windows doesn’t enable controlled prioritization of device IRQs and user-level apps execute only when a processor’s IRQL is at passive level, Windows **isn’t** typically suitable as a **real-time OS**.
 - Associating or disconnecting an ISR with a particular level of interrupt is called connecting or disconnecting an interrupt object.
 	- Accomplished by calling `IoConnectInterruptEx` and `IoDisconnectInterruptEx`, which allow a device driver to “turn on” an ISR when the driver is loaded into the system and to “turn off” the ISR if the driver is unloaded.
 	- :+1: Prevents device drivers from fiddling directly with interrupt hardware.
@@ -330,7 +330,7 @@ and then decrements a counter that tracks how long the current thread has run. W
 	- Windows would lose track of time, causing erroneous results in calculations of **uptime** and **clock time**;
 	- And worst, causing timers **not to expire** anymore and **threads** never to **lose** their **quantum** anymore.
 	- :arrow_forward: Windows would also not be a preemptive OS, and unless the current running thread yielded the CPU, critical background tasks and scheduling could never occur on a given processor.
-- Windows programs the system clock to fire at the **most appropriate interval** for the machine, and subsequently allows drivers, applications, and administrators to **modify the clock interval** for their needs.
+- Windows programs the system clock to fire at the **most appropriate interval** for the machine, and subsequently allows drivers, apps, and administrators to **modify the clock interval** for their needs.
 - The system clock is maintained either by the *PIT (Programmable Interrupt Timer)* chip that is present on all computers since the PC/AT, or the *RTC (Real Time Clock)*.
 - On today’s machines, the APIC Multiprocessor HAL configures the RTC to fire every 15.6 milliseconds, which corresponds to about 64 times a second.
 
@@ -1699,8 +1699,8 @@ receipt.
   2. Look inside the executable’s header to see whether it is a .NET application (specified by the presence of a .NET-specific image directory).
   3. Initialize the **National Language Support** (NLS for internationalization) tables for the process.
   4. Initialize the **Wow64** engine if the image is 32-bit and is running on 64-bit Windows.
-  5. Load any configuration options specified in the executable’s header. These options, which a developer can define when compiling the application, control the behavior of the executable.
-  6. Set the affinity mask if one was specified in the executable header.
+  5. Load any configuration options specified in the executable’s header. These options, which a developer can define when compiling the app, control the behavior of the executable.
+  6. Set the **affinity mask** if one was specified in the executable header.
   7. Initialize **FLS** and **TLS**
   8. Initialize the **heap manager** for the process, and create the **first process heap**.
   9. Allocate an **SxS** (*Side-by-Side* Assembly)/Fusion **activation context** for the process. This allows the system to use the appropriate DLL version file, instead of defaulting to the DLL that shipped with the OS.
@@ -1803,3 +1803,39 @@ structure Instead of doing this for each entry, however, WinDbg can do most of t
 - During execution, **delayed** dependencies (called **delay load**), as well as run-time operations (such as calling `LoadLibrary`) can call into the loader and essentially repeat the same tasks.
 
 ### Post-Import Process Initialization
+
+- After the required dependencies have been loaded, several initialization tasks must be performed to fully finalize launching the app. In this phase, the loader will do the following:
+  1. Check if the app is a **.NET** app, and redirect execution to the .NET runtime entry point instead, assuming the image has been validated by the framework
+  2. Check if the **app itself** requires **relocation**, and process the relocation entries for the app.
+  3. Check if the app makes use of **TLS**, and look in the app executable for the TLS entries it needs to allocate and configure.
+  4. If this is a Windows app, the Windows subsystem **thread-initialization thunk code** is located after loading `kernel32 dll`, and the **Authz/AppLocker** enforcement is enabled. If `Kernel32.dll` is not found, the system is presumably assumed to be running in **MinWin** and only` Kernelbase.dll` is loaded.
+  5. Any static imports are now loaded
+  6. At this point, the initial **debugger breakpoint** will be hit when using a debugger such as WinDbg.
+  7. Make sure that the app will be able to run properly if the system is a **multiprocessor** system.
+  8. Set up the default **data execution prevention** (DEP) options, including for exception-chain validation, also called “software” DEP.
+  9. Check whether this app requires any app **compatibility** work, and load the **shim engine** if required.
+  10. Detect if this app is protected by `SecuROM`, `SafeDisc`, and other kinds of wrapper or protection utilities that could have issues with DEP (and reconfigure DEP settings in those cases).
+  11. Run the **initializers** for all the loaded modules
+  12. Run the post-initialization **Shim Engine callback** if the module is being shimmed for app compatibility
+  13. Run the associated subsystem DLL **post-process initialization routine** registered in the **PEB** For Windows apps, this does Terminal Services–specific checks, for example.
+
+- Running the initializers is the last main step in the loader’s work: This is the step that calls the `DllMain` routine for each DLL (allowing each DLL to perform its own **initialization** work) as well as processes the **TLS initializers** of each DLL. As a very last step, the loader calls the **TLS initializer** of the **actual app**.
+
+### SwitchBack
+
+- SwitchBack, implemented in the loader, enables software developers to embed a `GUID` specific to the Windows version they are targeting in their executable’s associated manifest.
+- SwitchBack parses this information and correlates it with embedded information in **SwitchBack-compatible DLLs** (in the `.sb_data` image section) to decide which version of an affected API should be called by the module.
+- Whenever a Windows API is affected by changes that might break compatibility, the function’s entry code calls the `SbSwitchProcedure` to invoke the SwitchBack logic.  It passes along a pointer to the **SwitchBack Module Table**, which contains information about the SwitchBack mechanisms employed in the module.
+- The table also contains a pointer to an array of entries for each **SwitchBack point**. This table contains a description of each branch-point that identifies it with a symbolic name and a comprehensive description, along with an associated mitigation tag.
+
+### API Sets
+
+- While SwitchBack uses **API redirection** for specific **application-compatibility** scenarios, there is a much more pervasive redirection mechanism used in Windows for all applications, called API Sets 👍.
+- Its purpose is to enable **fine-grained categorization** of Windows APIs into **sub-DLLs** instead of having **large multipurpose DLLs** that span nearly thousands of APIs that might not be needed on all types of Windows systems today and in the future.
+- For example, the following graphic shows that `Kernel32.dll`, which is a core Windows library, imports from many other DLLs, beginning with `API-MS-WIN`. Each of these DLLs contain a small
+subset of the APIs that `Kernel32` normally provides, but together they make up the entire API surface exposed by `Kernel32.dll`. The `CORE-STRING` library, for instance, provides only the Windows base **string** functions.
+<p align="center"><img src="./assets/api-sets.png" width="600px" height="auto"></p>
+
+- When the process manager initializes, it calls the `PspInitializeApiSetMap` function, which is responsible for creating a section object of the **API Set redirection table**,
+which is stored in `%SystemRoot%\System32\ApiSetSchema.dll`. The DLL contains no executable code, but it has a section called `.apiset` that contains API Set mapping data that **maps virtual API Set DLLs** to **logical DLLs** that implement the APIs. Whenever a new process starts, the process manager maps the section object into the process’ address space and sets the `ApiSetMap` field in the process’ PEB to point to the base address where the section object was mapped.
+- In turn, the loader’s `LdrpApplyFileNameRedirection` function, which is normally responsible for the local and SxS/Fusion manifest redirection, also checks for API Set redirection data whenever a new import library that has a name starting with “*API-*“ loads (either dynamically or statically). The API Set table is organized by library with each entry describing in which logical DLL the function can be found, and that DLL is what gets loaded.
