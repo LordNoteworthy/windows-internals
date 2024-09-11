@@ -1839,3 +1839,22 @@ subset of the APIs that `Kernel32` normally provides, but together they make up 
 - When the process manager initializes, it calls the `PspInitializeApiSetMap` function, which is responsible for creating a section object of the **API Set redirection table**,
 which is stored in `%SystemRoot%\System32\ApiSetSchema.dll`. The DLL contains no executable code, but it has a section called `.apiset` that contains API Set mapping data that **maps virtual API Set DLLs** to **logical DLLs** that implement the APIs. Whenever a new process starts, the process manager maps the section object into the process’ address space and sets the `ApiSetMap` field in the process’ PEB to point to the base address where the section object was mapped.
 - In turn, the loader’s `LdrpApplyFileNameRedirection` function, which is normally responsible for the local and SxS/Fusion manifest redirection, also checks for API Set redirection data whenever a new import library that has a name starting with “*API-*“ loads (either dynamically or statically). The API Set table is organized by library with each entry describing in which logical DLL the function can be found, and that DLL is what gets loaded.
+
+## Hypervisor (Hyper-V)
+
+<p align="center"><img src="./assets/hyper-v-arch-stack.png" width="500px" height="auto"></p>
+
+### Partitions
+
+- One of the key architectural components behind the Windows hypervisor is the concept of a **partition**.
+- A partition essentially references an **instance** of an OS installation, which can refer either to what’s traditionally called the **host** or to the **guest**.
+- Under the Windows hypervisor model, these two terms are not used; instead, we talk of either a **parent partition** or a **child partition**, respectively.
+
+### Parent Partition
+
+- The hypervisor uses the existing **Windows driver architecture** and talks to actual Windows device drivers. This architecture results in several components that provide and manage this behavior, which are collectively called the **hypervisor stack**.
+<p align="center"><img src="./assets/hyper-v-parent-partition.png" width="250px" height="auto"></p>
+
+### Parent Partition Operating System
+
+- The Windows installation (typically the minimal footprint server installation, called **Windows Server Core**, to minimize resource usage) is responsible for providing the hypervisor and the device drivers for the hardware on the system (which the hypervisor will need to access), as well as for running the hypervisor stack. It is also the management point for all the child partitions
