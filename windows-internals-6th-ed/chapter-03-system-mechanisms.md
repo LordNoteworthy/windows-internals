@@ -1855,33 +1855,61 @@ which is stored in `%SystemRoot%\System32\ApiSetSchema.dll`. The DLL contains no
 - The hypervisor uses the existing **Windows driver architecture** and talks to actual Windows device drivers. This architecture results in several components that provide and manage this behavior, which are collectively called the **hypervisor stack**.
 <p align="center"><img src="./assets/hyper-v-parent-partition.png" width="250px" height="auto"></p>
 
-### Parent Partition Operating System
+#### Parent Partition Operating System
 
 - The Windows installation (typically the minimal footprint server installation, called **Windows Server Core**, to minimize resource usage) is responsible for providing the hypervisor and the device drivers for the hardware on the system (which the hypervisor will need to access), as well as for running the hypervisor stack. It is also the management point for all the child partitions.
 
-### Virtual Machine Manager Service and Worker Processes
+#### Virtual Machine Manager Service and Worker Processes
 
 - The virtual machine management service (`%SystemRoot%\System32\Vmms.exe`) is responsible for providing the *Windows Management Instrumentation* (WMI) interface to the hypervisor, which allows **managing** the **child partitions** through a *Microsoft Management Console* (MMC) plug-in.
 - The virtual machine worker processes (VMWPs) (`%SystemRoot%\Windows\System32\vmwp.exe`), on the other hand, perform various virtualization work that a typical monolithic hypervisor would perform (similar to the work of a software-based virtualization solution).
   - Managing the state machine for a given child partition (to allow support for features such as **snapshots** and **state transitions**), responding to various notifications coming in from the hypervisor, performing the **emulation** of certain **devices** exposed to child partitions, and collaborating with the VM service and configuration component.
   - Includes components responsible for **remote** management of the virtualization stack, as well as an **RDP** component that allows using the remote desktop client.
 
-### Virtualization Service Providers (VSPs)
+#### Virtualization Service Providers (VSPs)
 
 - Responsible for the **high-speed emulation** of certain devices visible to child partitions.
 - Unlike the VM service and processes, VSPs can also run in kernel mode as drivers.
 
-### VM Infrastructure Driver and Hypervisor API Library
+#### VM Infrastructure Driver and Hypervisor API Library
 
 - Because the hypervisor cannot be directly accessed by user-mode apps, the virtualization stack must actually talk to a driver in kernel mode that is responsible for **relaying** the requests to the hypervisor.- This is the job of the VM infrastructure driver (VID).
 - The VID also provides support for certain **low-memory** devices, such as MMIO and ROM emulation.
 - A library located in kernel mode provides the actual interface to the hypervisor (called **hypercalls**)
 - You can find this functionality in the `Winhv.sys` device driver.
 
-### Hypervisor
+#### Hypervisor
 
 - At the bottom of the architecture is the hypervisor itself, which registers itself with the processor at
 system **boot-up time** and provides its services for the stack to use (through the use of the hypercall
 interface).
 - This early initialization is performed by the `hvboot.sys` driver.
 - Because Intel and AMD processors have slightly differing implementations of hardware-assisted virtualization, there are actually two different hypervisors (`Hvix64.exe` or `Hvax64.exe`).
+
+### Child Partitions
+
+- Unlike the parent partition, which has **full access** to the APIC, I/O ports, and physical memory, child partitions are limited for security and management reasons to their own view of address space (the **Guest Virtual Address** Space, or *GVA*, which is managed by the hypervisor) and have **no direct access** to hardware.![](2024-09-25-11-55-32.png) <p align="center"><img src="./assets/hyper-v-child-parition.png" width="250px" height="auto"></p>
+
+<details><summary>🔭 Examining Child Partitions from the Parent with LiveKd</summary>
+
+- Run `livekd -hvl` to list the IDs and names of active child partitions.
+- Run `LiveKd` with the `–hv` switch and specify the ID or name of the child partition that you want to examine.
+- If you want `LiveKd` to see a **consistent view**, you can specify the `–p `option to have the child partition **paused** while `LiveKd` is running.
+- 💡 All commands that work on a local system also work when you use `LiveKd` to explore a VM.
+</details>
+
+#### Virtualization Service Clients (VSCs)
+
+- VSCs are the child partition analogues of VSPs. Like VSPs, VSCs are used for **device emulation**.
+
+#### Enlightenments
+
+- Enlightenments are **direct modifications** to the standard Windows kernel code that can detect that this OS is running in a child partition and perform work differently.
+- Usually, these **optimizations** are highly hardware-specific and result in a **hypercall** to notify the hypervisor.
+- Example of such optimizations:
+  - Notifying the hypervisor of a **long busy-wait spin loop**.
+  - Entering and exiting an interrupt state can also be coordinated with the hypervisor, as well as access to the APIC, which can be enlightened to avoid trapping the real access and then virtualizing it.
+  - TLB flushing ( have the hypervisor flush only the specific information belonging to the child partition).
+
+### Hardware Emulation and Support
+
