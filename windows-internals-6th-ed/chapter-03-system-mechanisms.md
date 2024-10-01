@@ -1888,8 +1888,9 @@ interface).
 
 ### Child Partitions
 
-- Unlike the parent partition, which has **full access** to the APIC, I/O ports, and physical memory, child partitions are limited for security and management reasons to their own view of address space (the **Guest Virtual Address** Space, or *GVA*, which is managed by the hypervisor) and have **no direct access** to hardware.![](2024-09-25-11-55-32.png) <p align="center"><img src="./assets/hyper-v-child-parition.png" width="250px" height="auto"></p>
+- Unlike the parent partition, which has **full access** to the APIC, I/O ports, and physical memory, child partitions are limited for security and management reasons to their own view of address space (the **Guest Virtual Address** Space, or *GVA*, which is managed by the hypervisor) and have **no direct access** to hardware.
 
+<p align="center"><img src="./assets/hyper-v-child-parition.png" width="250px" height="auto"></p>
 <details><summary>🔭 Examining Child Partitions from the Parent with LiveKd</summary>
 
 - Run `livekd -hvl` to list the IDs and names of active child partitions.
@@ -1913,3 +1914,63 @@ interface).
 
 ### Hardware Emulation and Support
 
+- Instead of exposing actual hardware to child partitions, the hypervisor exposes **virtual devices** (called **VDevs**).
+- VDevs are packaged as **COM components** that run inside a VM worker process, and they are the central manageable object behind the device (Usually, VDevs expose a WMI interface).
+- The Windows virtualization stack provides support for two kinds of virtual devices:
+  - **Emulated devices**: provide support for various devices that the OS on the child partition would expect to find.
+  - **Synthetic devices**: (also called **enlightened I/O**): requires specific support from the guest OS. Synthetic devices provide a significant performance benefit by reducing CPU.overhead.
+
+#### Emulated Devices
+
+- Emulated devices work by presenting the child partition with a set of **I/O ports**, **memory ranges**, and **interrupts** that are being controlled and monitored by the hypervisor.
+- The need for emulated devices comes from the fact that the hypervisor needs to support **non hypervisor-aware** OSs, as well as the **early installation** steps of even Windows itself.
+- Emulated devices are also used for hardware that doesn’t require **high-speed** emulation and for which software emulation might even be faster. This includes items such as COM
+(**serial**) ports, **parallel** ports, or the **motherboard** itself.
+
+#### Synthetic Devices
+
+- Today’s usage scenarios require a lot more processing power, such as support for 1GbE connections; full-color, high-resolution 3D support; and high-speed access to storage
+devices. To support this kind of virtualized hardware access at an acceptable CPU usage level and virtualized throughput, the virtualization stack uses a variety of components to optimize device I/Os to their fullest (similar to kernel enlightenments).
+- Three components are part of this support, and they all belong to what’s presented to the user as **integration components** or *ICs*:
+  - Virtualization service providers (VSPs)
+  - Virtualization service clients/consumers (VSCs)
+  - VMBus
+<p align="center"><img src="./assets/hyper-v-synthetic-devices.png" width="400px" height="auto"></p>
+
+- VSCs are almost always designed to be **drivers** sitting at the lowest level of the device stack and intercept I/Os to a device and redirect them through a more optimized path. The main optimization that is performed by this model is to avoid actual hardware access and use **VMBus** instead.
+- Under this model, the hypervisor is **unaware** of the I/O, and the VSP redirects it directly to the parent partition’s kernel storage stack, avoiding a trip to user mode as well.
+- Other VSPs can perform work directly on the device, by talking to the actual hardware and **bypassing any driver** that might have been loaded on the parent partition. Another option is to have a user-mode VSP, which can make sense when dealing with lower-bandwidth devices.
+- VMBus is a **bus driver** present on both the parent partition and the child partitions responsible for the **PnP enumeration** of synthetic devices in a child. It also contains the optimized cross-partition messaging protocol (using a ring buffer) that uses a transport method that is appropriate for the data size.
+
+### Virtual Processors
+
+- Just as the hypervisor doesn’t allow direct access to hardware, child partitions don’t really see the actual processors on the machine but have a **virtualized view** of CPUs as well.
+- Because processors can be shared across multiple child partitions, the hypervisor includes its own **scheduler** that distributes the workload of the various partitions across each processor.
+- The hypervisor is also directly responsible for virtualizing processor **APICs** and providing a simpler, **less-featured virtual APIC**, including support for the timer that’s found on most APICs (however,
+at a slower rate).
+
+### Memory Virtualization
+
+- Almost all osS expect memory to begin at **address 0** and be somewhat **contiguous**, so simply assigning chunks of physical memory to each child partition wouldn’t work even if enough memory was available on the system.
+- To solve this problem, the hypervisor implements an address space called the **guest physical address** space (**GPA** space). The GPA starts at address 0, which satisfies the needs of OSs inside child partitions.
+- However, the GPA is not a simple mapping to a chunk of physical memory because of the second problem (the lack of contiguous memory). As such, GPAs can point to any location in the machine’s physical memory (which is called the **system physical address** space, or **SPA** space), and there must be a translation system to go from one address type to another.
+- This translation system is maintained by the hypervisor and is nearly identical to the way virtual memory is mapped to physical memory on x86 and x64 processors.
+
+<p align="center"><img src="./assets/hyper-v-virtual2physical.png" width="400px" height="auto"></p>
+
+### Second-Level Address Translation and Tagged TLB
+
+- Because the translation from GVA to GPA to SPA is expensive (because it must be done in software via **Shadow Page Tables** (*SPT*)), CPU manufacturers have worked to curtail this inefficiency by making the processor natively aware of the address translation requirements of a VM.
+- In other words, an advanced processor could understand that the memory access is occurring from a hosted VM and perform the GVA-to-SPA lookup on its own, without requiring assistance from the hypervisor.
+- This lookup technology is called **Second-Level Address Translation** (SLAT) because it covers both the target-to-host translation (second level) and the host VA–to–host PA translation (first level).
+- Pros 👍:
+  - Reduced code cmplexity
+  - Minimizing the number of context switches required to handle page faults in hosted partitions.
+  - Throw out its SPTs and relevant mappings ▶️ reduction of memory overhead as well.
+- On CISC processors such as the x86 and x64, the TLB was built as a **system-wide** resource — each time the OS switched the currently executing **process**, the TLB had to be **flushed to invalidate** any cached entries that might’ve belonged to the previous executing process. If the processor, instead, could be told that the process has changed, the TLB would avoid a flush and the processor would simply not use the cached entries that did not correspond to this process.
+- New entries would be created, eventually overriding other processes’ older entries. This type of smarter TLB is called a **tagged TLB**, because each cache entry is tagged with a **per-process identifier**.
+- Flushing the TLB is even worse when dealing with Hyper-V systems because a different process can actually correspond to a completely different VM.
+  - In other words, each time the hypervisor and OS scheduled another VM for execution, the **host’s TLB** had to be **flushed**, flushing away all the cached translations the previous VM had performed, slowing down memory access, and causing significant latency.
+  - When running on a processor that implements a **tagged TLB**, the Hyper-V can simply notify the processor that a new process/VM is running and that the entries of other VM should not be used.
+  - AMD processors with RVI support tagged TLBs through an **Address Space Identifier** (*ASID*), while recent Intel Nehalem-EX
+processors implement a tagged TLB by using a **Virtual Processor Identifier** (*VPID*).
