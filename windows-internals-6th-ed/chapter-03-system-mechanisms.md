@@ -1974,3 +1974,45 @@ at a slower rate).
   - When running on a processor that implements a **tagged TLB**, the Hyper-V can simply notify the processor that a new process/VM is running and that the entries of other VM should not be used.
   - AMD processors with RVI support tagged TLBs through an **Address Space Identifier** (*ASID*), while recent Intel Nehalem-EX
 processors implement a tagged TLB by using a **Virtual Processor Identifier** (*VPID*).
+
+### Dynamic Memory (DM)
+
+- Enables systems administrators to make a VM’s physical memory allocation variable based on the memory demands of the active VMs.
+<p align="center"><img src="./assets/hyper-v-dynamic-memory.png" width="400px" height="auto"></p>
+
+- The principle components of the architecture are as follows:
+  - The **Dynamic Memory balancer**, which is implemented in the VM management service. The balancer is responsible for assigning physical memory to child partitions
+  - The **Dynamic Memory VSP** (DM VSP), which runs in the VMWPs of child partitions that have dynamic memory enabled.
+  - The **Dynamic Memory VSC** (DM VSC, `%SystemRoot%\System32\Drivers\Dmvsc.sys`), installed as an enlightenment driver running in the child partitions.
+- If DM memory is supported, the DM VSC establishes a connection to the DM VSP via VMBus. Because the system’s memory usage fluctuates during the boot process, after all autostart Windows services have finished initializing, the VSC begins reporting memory statistics once per second that indicate the current system commit level in the VM.
+- The DM VSP in the parent partition calculates a **memory pressure** value for its corresponding
+VM using the following calculation based on the VM’s memory report: *Memory Pressure = Committed Memory / Physical Memory*.
+- A component called the balancer executes in the VMMS service. **Once per second**, it analyzes the memory pressures reported by the DM VSPs, considers VM policy configuration, and determines if and how much memory should be redistributed.
+
+### Intercepts
+
+- Intercepts are configurable hooks that a parent partition can install and configure in order to respond to. These can include the following items:
+  - **I/O** intercepts, useful for device emulation
+  - **MSR** intercepts, useful for APIC emulation and profiling
+  - **Access to GPAs**, useful for device emulation, monitoring, and profiling.
+  - **Exception** intercepts such as page faults, useful for maintaining machine state and memory emulation (for example, maintaining CoW).
+
+### Live Migration
+
+- Hyper-V includes support for migrating VMs between nodes of a Windows Failover Cluster with **minimal downtime**.
+- The key to Live Migration’s efficiency is that the bulk of the transfer of the VM’s memory from the source to the target occurs while the VM **continues to run** on the source node; only when the memory transfer is complete does the VM suspend and resume operating on the target node.
+<p align="center"><img src="./assets/hyper-v-live-migration.png" width="400px" height="auto"></p>
+
+- The Live Migration process proceeds in a number of steps:
+  1. **Migration Setup**: Transfers the VM’s configuration information, which includes virtual hardware specifications such as the number of processors and amount of RAM, to the destination.
+  2. **Memory Transfer**: The memory transfer phase consists of several subphases:
+     - The source VMWP creates a **bitmap** with one bit representing **each page** of the VM’s guest physical memory. It sets every bit to indicate that the page is **dirty**, which means that the page’s current contents have **not yet been sent to the target**.
+     - The source VMWP registers a **memory-change notification callback** with the hypervisor that sets the corresponding bit in the bitmap for each page of the VM that changes
+     - The source VMWP proceeds to walk through the dirty-page bitmap in 16-KB blocks, clearing the dirty bits in the dirty-page bitmap for the pages in the block, reading each dirty page’s contents via a hypervisor call, and sending the contents to the target. The target VMWP invokes the hypervisor to inject the memory contents into the target VM’s guest physical memory.
+     - When it’s finished iterating over the dirty-page bitmap, the source VMWP checks to see if any pages have been dirtied **during the iteration**. If not, it moves to the next phase of the migration, but if any pages have been dirtied, it repeats the iteration. If it’s iterated **five times**, the VM is dirtying memory faster than the worker process can send modifications, so it proceeds to the next phase of the migration.
+  3. **State Transfer**: The source VMWP **suspends** the virtual machine and makes a final iteration through the dirty-page bitmap to send over any pages that were dirtied since the last pass. Because the virtual machine is suspended during the transfer, no more pages will be dirtied. Then the source worker process sends the virtual machine’s state, including the contents of the **virtual processor register**s. Finally, it notifies VMMS that the migration is complete, waits for acknowledgement, and then sends a message to the target transferring ownership of the virtual machine. As the last migration step, the target worker process moves the virtual machine to the running state.
+- Another aspect of Live Migration is the **transfer of ownership** of the virtual machine’s files, including its **VHDs**
+  - Traditional Windows Clustering is a **shared-nothing** model, where each **LUN** of the cluster’s storage system is owned by one node at a time. The LUN’s owning node has sole access to the LUN and any files stored on it.
+  - 🤕 This is problematic for Live Migration because LUN ownership transfer is an **expensive operation**, consisting of the source node flushing any modified file data to the LUN, the source node unmounting the volumes formatted on the LUN, ownership transfer from the source node to target node, and the target node mounting the volumes.
+  - To address the limitations of the traditional clustering model and make Live Migration possible, Live Migration leverages a storage feature called **Clustered Shared Volumes** (CSV) With CSV, one node owns the namespace of the volumes on a LUN while others can have exclusive ownership of individual file.
+<p align="center"><img src="./assets/hyper-v-csv.png" width="400px" height="auto"></p>
