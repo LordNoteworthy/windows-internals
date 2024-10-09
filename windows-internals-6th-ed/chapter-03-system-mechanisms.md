@@ -2016,3 +2016,54 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
   - 🤕 This is problematic for Live Migration because LUN ownership transfer is an **expensive operation**, consisting of the source node flushing any modified file data to the LUN, the source node unmounting the volumes formatted on the LUN, ownership transfer from the source node to target node, and the target node mounting the volumes.
   - To address the limitations of the traditional clustering model and make Live Migration possible, Live Migration leverages a storage feature called **Clustered Shared Volumes** (CSV) With CSV, one node owns the namespace of the volumes on a LUN while others can have exclusive ownership of individual file.
 <p align="center"><img src="./assets/hyper-v-csv.png" width="400px" height="auto"></p>
+
+### Kernel Transaction Manager
+
+- Applications can, with very little effort, gain **automatic error-recovery** capabilities by using a kernel mechanism called the **Kernel Transaction Manager** (KTM), which provides the facilities required to perform such transactions and enables services such as the **distributed transaction coordinator** (DTC) in user mode to take advantage of them. Any developer who uses the appropriate APIs can take advantage of these services as well.
+- As the heart of transaction support, KTM allows transactional resource managers such as **NTFS** and the **registry** to coordinate their updates for a specific set of changes made by an application.
+  - NTFS uses an extension to support transactions, called **TxF**.
+  - The registry uses a similar extension, called **TxR**.
+  - These kernel-mode resource managers work with KTM to coordinate the transaction state, just as user-mode resource managers use DTC to coordinate transaction state across multiple user-mode resource managers.
+- KTM provides four system objects that allow a variety of operations to be supported:
+  | Object | Meaning | Usage |
+  |--------|---------|-------|
+  | Transaction | Collection of data operations to be performed. Provides atomic, consistent, isolated, and durable operations | Can be associated with the registry and file I/O to make those operations part of the same larger operation |
+  | Enlistment | Association between a resource manager and a transaction | Register with a transaction to receive notifications on it. The enlistment can specify which notifications should be generated.|
+  | Resource Manager (RM) | Container for the transactions and the data on which they operate | Provides an interface for clients to read and write the data, typically on a database. |
+  | Transaction Manager (TM) | Container of all transactions that are part of the associated resource managers. As an instance of a log, it knows about all transaction states but not their data | Provides an infrastructure through which clients and resource managers can communicate, and provides and coordinates recovery operations after a crash Clients use the TM for transactions; RMs use the TM for enlistments |
+
+### Hotpatch Support
+
+- Rebooting a machine to apply the latest patches can mean significant **downtime** for a server, which is why Windows supports a run-time method of patching, called a **hot patch** (or simply hotpatch), in contrast to a **cold patch**, which requires a reboot.
+- Hotpatching doesn’t simply allow files to be overwritten during execution; instead, it includes a **complex** series of operations that can be requested (and combined). These operations are listed below:
+  | Operation |  Meaning | Usage  |
+  | --------- | -------- | -------|
+  | Rename Image | Replacing a DLL that is on the disk and currently used by other applications, or replacing a driver that is on the disk and is currently loaded by the kernel | When an entire library in user mode needs to be replaced, the kernel can detect which processes and services are referencing it, unload them, and then update the DLL and restart the programs and services (which is done through the restart manager). When a driver needs to be replaced, the kernel can unload the driver (the driver requires an unload routine), update it, and then reload it. |
+  | Object Swap | Atomically renaming an object in the object directory namespace | When a file (typically a *known DLL*) needs to be renamed atomically but not affect any process that might be using it (so that the process can start using the new file immediately, using the old handle, without requiring an application restart) |
+  | Patch Function | Code Replacing the code of one or more functions inside an image file with another version | If a DLL or driver can’t be replaced or renamed during run time, functions in the image can be directly patched A hotpatch DLL that contains the newer code is jumped to whenever an older function is called. |
+  | Refresh System DLL | Reload the memory mapped section object for Ntdll dll | The system native library, Ntdll dll, is loaded only once during boot-up and then simply duplicated into the address space of every new process If it has been hotpatched, the system must refresh this section to load the newer version |
+
+- **Compile-time hotpatching** support works by adding **7 additional bytes** to the beginning of each function— 4 are considered part of the end of the previous function, and 2 are part of the function prolog—that is, the function’s beginning.
+- Here’s an example of a function that was built with hotpatching information:
+  ```c
+  lkd> u nt!NtCreateFile - 5
+  nt!FsRtlTeardownPerFileContexts+0x169:
+  82227ea5 90 nop
+  82227ea6 90 nop
+  82227ea7 90 nop
+  82227ea8 90 nop
+  82227ea9 90 nop
+  nt!NtCreateFile:
+  82227eaa 8bff mov edi,edi
+  ```
+- Because 7 bytes are available, the `NtCreateFile` prologue can be transformed into a **short jump** to the buffer of five instructions available, which are then converted to a **near jump** instruction to the patched routine. Here’s `NtCreateFile` after having been hotpatched:
+  ```c
+  lkd> u nt!NtCreateFile - 5
+  nt!FsRtlTeardownPerFileContexts+0x169:
+  82227ea5 e93d020010 jmp nt_patch!NtCreateFile (922280e7)
+  nt!NtCreateFile:
+  82227eaa ebfc jmp nt!FsRtlTeardownPerFileContexts+0x169 (82227ea5)
+  ```
+
+### Kernel Patch Protection
+
