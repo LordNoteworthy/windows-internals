@@ -353,7 +353,7 @@ and then decrements a counter that tracks how long the current thread has run. W
 #### Timer Expiration
 
 - One of the main tasks of the ISR associated with the interrupt that the RTC or PIT will generate is to **keep track of system time**, which is mainly done by the `KeUpdateSystemTime` routine.
-- Its second job is to keep track of **logical run time**, such as **process/thread execution times** and the **system tick time**, which is the underlying number used by APIs such as `GetTickCount` that developers use to time operations in their applications. This part of the work is performed by `KeUpdateRunTime`. Before doing any of that work, however, `KeUpdateRunTime` checks whether any timers have expired.
+- Its second job is to keep track of **logical run time**, such as **process/thread execution times** and the **system tick time**, which is the underlying number used by APIs such as `GetTickCount` that developers use to time operations in their apps. This part of the work is performed by `KeUpdateRunTime`. Before doing any of that work, however, `KeUpdateRunTime` checks whether any timers have expired.
 - Because the clock fires at known interval multiples, the **bottom bits** of the current system time will be at one of 64 known positions (on an APIC HAL). Windows uses that fact to organize all driver and application timers into **linked lists** based on an **array** where each entry corresponds to a **possible multiple of the system time**. This table, called the *timer table*, is located in the `PRCB`, which enables each processor to perform its own independent timer expiration without needing to acquire a **global lock**.
 - Each multiple of the system time that a timer can be associated with is called the *hand*, and it’s stored in the timer object’s **dispatcher header**.
 - Therefore, to determine if a clock has expired, it is only necessary to check if there are any timers on the linked list associated with the current hand.
@@ -409,7 +409,7 @@ and then decrements a counter that tracks how long the current thread has run. W
 
 - Why ? Reducing the amount of software timer-expiration work would both help to decrease latency (by requiring less work at DISPATCH_LEVEL) as well as allow other processors to stay in their sleep states even longer (because we’ve established that the processors wake up only to handle expiring timers, fewer timer expirations result in longer sleep times).
 - How ? Combine separate timer hands into an individual hand with multiple expirations.
-- Assuming that most drivers and user-mode applications do not particularly care about the exact firing period of their timers :)
+- Assuming that most drivers and user-mode apps do not particularly care about the exact firing period of their timers :)
 - Not all timers are ready to be coalesced into coarser granularities, so Windows enables this mechanism only for timers that have **marked themselves as coalescable**, either through the `KeSetCoalescableTimer` kernel API or through its user-mode counterpart, `SetWaitableTimerEx`.
 - Assuming all the timers specified tolerances and are thus coalescable, in the previous scenario, Windows could decide to coalesce the timers as:
 <p align="center"><img src="./assets/timer-coalescing.png" width="400px" height="auto"></p>
@@ -755,7 +755,7 @@ Tables below briefly describes the object header fields:
     ```
 </details>
 
-- **Synchronization**, one of the attributes **visible** to Windows applications, refers to a thread’s ability to synchronize its execution by waiting for an object to change from one state to another.
+- **Synchronization**, one of the attributes **visible** to Windows apps, refers to a thread’s ability to synchronize its execution by waiting for an object to change from one state to another.
   -  A thread can synchronize with executive *job*, *process*, *thread*, *file*, *event*, *semaphore*, *mutex*, and *timer* objects.
   -  Other executive objects don’t support synchronization.
   -  An object’s ability to support synchronization is based on three possibilities:
@@ -897,7 +897,7 @@ Although you can use Process Explorer, Handle, and the OpenFiles.exe utility to 
   - In the kernel, this system call attempts to **allocate** a piece of paged pool in which to store the `KAPC` control object structure associated with an APC.
   - In **low memory** situations, this operation fails, preventing the delivery of the APC 😮‍💨.
   - To prevent this, on startup, use `NtAllocateReserveObject` to request the kernel to **pre-allocate** the `KAPC` structure. Then the application uses a different system call, `NtQueueUserApcThreadEx`, that contains an extra parameter that is used to store the handle to the reserve object.
-- A similar scenario can occur when applications need **failure-free** delivery of an **I/O completion** port message, or packet.
+- A similar scenario can occur when apps need **failure-free** delivery of an **I/O completion** port message, or packet.
     - Typically, packets are sent with the `PostQueuedCompletionStatus` API in `Kernelbase.dll` ▶️ `NtSetIoCompletion`.
     - Similarly to the user APC, the kernel must **allocate** an **I/O manager** structure to contain the completion-packet information, and if this allocation fails, the packet cannot be created.
     - With reserve objects, the app can use the `NtAllocateReserveObject` API on startup to have the kernel **pre-allocate** the I/O completion packet, and the `NtSetIoCompletionEx` system call can be used to supply a handle to this reserve object, guaranteeing a success path.
@@ -996,12 +996,12 @@ names stored there.
     |\Driver | Driver objects. |
     |\FileSystem | File-system driver objects and file-system-recognizer device objects. The Filter Manager also creates its own device objects under the Filters subkey. |
     |\GLOBAL?? | MS-DOS device names. (The \Sessions\0\DosDevices\<LUID>\Global directories are symbolic links to this directory) |
-    |\KernelObjects | Contains event objects that signal low resource conditions, memory errors, the completion of certain operating system tasks, as well as objects representing Sessions. |
+    |\KernelObjects | Contains event objects that signal low resource conditions, memory errors, the completion of certain OS tasks, as well as objects representing Sessions. |
     |\KnownDlls | Section names and path for known DLLs (DLLs mapped by the system at startup time). |
     |\KnownDlls32 | On a 64-bit Windows installation, \KnownDlls contains the native 64-bit binaries, so this directory is used instead to store Wow64 32-bit versions of those DLLs. |
     |\Nls | Section names for mapped national language support tables. |
     |\ObjectTypes | Names of types of objects. |
-    |\PSXSS | If Subsystem for UNIX Applications is enabled (through installation of the SUA component), this contains ALPC ports used by Subsystem for UNIX Applications. |
+    |\PSXSS | If Subsystem for UNIX Apps is enabled (through installation of the SUA component), this contains ALPC ports used by Subsystem for UNIX Apps. |
     |\RPC Control | ALPC ports used by remote procedure calls (RPCs), and events used by Conhost exe as part of the console isolation mechanism. |
     |\Security | ALPC ports and events used by names of objects specific to the security subsystem.|
     |\Sessions | Per-session namespace directory.|
@@ -1338,7 +1338,7 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
 
 ### Critical Sections
 
-- are one of the main synchronization primitives that Windows provides to user-mode applications on top of the kernel-based synchronization primitives.
+- are one of the main synchronization primitives that Windows provides to user-mode apps on top of the kernel-based synchronization primitives.
 - have one major advantage over their kernel counterparts, which is saving a **round-trip** to **kernel** mode in cases in which the lock is *non-contended*, which is typically **99%** of the time or more.
 - performs the locking logic using interlocked CPU operations.
 - in contended cases, the kernel must be called to put the thread in a wait state.
@@ -1379,7 +1379,7 @@ Unable to get context for thread running on processor 1, HRESULT 0x80004001
     - SRW Locks cannot be **“upgraded”** or **converted** from **shared** to **exclusive** or vice versa,
     - they cannot be recursively acquired,
     - are exclusive to **user-mode** code, while pushlocks are exclusive to **kernel-mode** code, and the two cannot be shared or exposed from one layer to the other.
-- SRW Locks entirely replace CSs in application code, but they also offer **multiple-reader**, **single-writer** functionality.
+- SRW Locks entirely replace CSs in app code, but they also offer **multiple-reader**, **single-writer** functionality.
 
 ### Run Once Initialization
 
@@ -1533,7 +1533,7 @@ THREAD 8613c2d8 Cid 0004.004c Teb: 00000000 Win32Thread: 00000000 WAIT
 
 <details><summary>🔭 EXPERIMENT: Dumping a Connection Port:</summary>
 
-- In this experiment, you’ll use the **CSRSS API** port for Windows processes running in Session 1, which is the typical interactive session for the console user. Whenever a Windows application launches, it connects to CSRSS’s API port in the appropriate session.
+- In this experiment, you’ll use the **CSRSS API** port for Windows processes running in Session 1, which is the typical interactive session for the console user. Whenever a Windows app launches, it connects to CSRSS’s API port in the appropriate session.
 - Start by obtaining a pointer to the connection port with the `!object` command:
 
 ```c
@@ -1572,7 +1572,7 @@ Process=fffffa80054de060 ('dwm.exe')
 ## Kernel Event Tracing
 
 - ETW (*Event Tracing for Windows*) is a common infrastructure in the kernel that provides ability to trace various components of the Kernel and its device drivers for use in system troubleshooting.
-- An application that uses ETW falls into one or more of three categories:
+- An app that uses ETW falls into one or more of three categories:
   - **Controller**: starts and stops logging sessions and manages buffer pools.
   - **Provider**: defines GUIDs for the event classes it can produce traces for and registers them with ETW.
   - **Consumer** selects one or more trace sessions for which it wants to read trace data.
@@ -1583,7 +1583,7 @@ Process=fffffa80054de060 ('dwm.exe')
 
 ## WOW64
 
-- Wow64 (Win32 emulation on 64-bit Windows) refers to the software that permits the execution of 32-bit x86 applications on 64-bit Windows.
+- Wow64 (Win32 emulation on 64-bit Windows) refers to the software that permits the execution of 32-bit x86 apps on 64-bit Windows.
 - implemented as a set of **user-mode DLLs**, with some support from the kernel for creating 32-bit versions of what would normally only be 64-bit data ­structures, such as the PEB and TEB.
 ­- Here are the user-mode DLLs responsible for Wow64:
     - `Wow64.dll` Manages **process** and **thread creation**, and hooks **exception-dispatching** and base **system calls** exported by `Ntoskrnl.exe`. It also implements **file-system redirection** and **registry redirection**.
@@ -1609,7 +1609,7 @@ system call returns, Wow64 converts any output parameters if necessary from 64-b
   - Whenever the 64-bit kernel is about to dispatch a user-mode APC to a Wow64 process, it maps the 32-bit APC address to a higher range of 64-bit address space. The 64-bit Ntdll then captures the native APC and context record in user mode and **maps it back to a 32-bit address**.
   - It then prepares a 32-bit usermode APC and context record and dispatches it the same way the native 32-bit kernel would.
 - **Console Support**:
-  - Because console support is implemented in user mode by `Csrss.exe`, of which **only a single native** binary exists, 32-bit applications would be unable to perform console I/O while on 64-bit Windows.
+  - Because console support is implemented in user mode by `Csrss.exe`, of which **only a single native** binary exists, 32-bit apps would be unable to perform console I/O while on 64-bit Windows.
   - Similarly to how a special `rpcrt4.dll` exits to thunk 32-bit to 64-bit RPCs, the 32-bit Kernel dll for Wow64 contains special code to call into Wow, for **thunking parameters** during interaction with `Csrss` and `Conhost.exe`.
 - **User Callbacks**:
     - Wow64 intercepts all callbacks from the kernel into user mode Wow64 treats such calls as **system calls**.
@@ -1696,7 +1696,7 @@ receipt.
 
 - Let's start by covering the work that takes place in **user mode**, independent of any subsystem, as soon as the first user-mode instruction starts execution. When a process starts, the loader performs the following steps:
   1. Build the image path name for the app, and query the **Image File Execution Options** key for the app, as well as the **DEP** and **SEH** validation linker settings.
-  2. Look inside the executable’s header to see whether it is a .NET application (specified by the presence of a .NET-specific image directory).
+  2. Look inside the executable’s header to see whether it is a .NET app (specified by the presence of a .NET-specific image directory).
   3. Initialize the **National Language Support** (NLS for internationalization) tables for the process.
   4. Initialize the **Wow64** engine if the image is 32-bit and is running on 64-bit Windows.
   5. Load any configuration options specified in the executable’s header. These options, which a developer can define when compiling the app, control the behavior of the executable.
@@ -1715,11 +1715,11 @@ receipt.
 - When resolving binary dependencies, the basic Windows app model locates files in a **search path**: a **list of locations** that is searched sequentially for a file with a matching base name.
 - However, the placement of the **current directory** in this ordering allowed load operations on system binaries to be overridden by placing **malicious binaries** with the same base name in the app’s current directory.
 - To prevent security risks associated with this behavior, a feature known as **safe DLL search** mode was added to the path search computation and, starting with *Windows XP SP2*  enabled by default for all processes. Under safe search mode, the **current directory** is **moved behind** the three system directories, resulting in the following path ordering:
-  1. The directory from which the application was launched
+  1. The directory from which the app was launched
   2. The native Windows system directory (for example, `C:\Windows\System32`)
   3. The 16-bit Windows system directory (for example, `C:\Windows\System`)
   4. The Windows directory (for example, C:\Windows)
-  5. The current directory at application launch time
+  5. The current directory at app launch time
   6. Any directories specified by the `%PATH%` environment variable.
 - Apps can change specific path elements by editing the `%PATH%` variable using the `SetEnvironmentVariable` API, changing the current directory using the `SetCurrentDirectory` API, or using the `SetDllDirectory` API to specify a DLL directory for the process. When a DLL directory is specified, the loader ignores the safe DLL search mode setting for the process
 - Callers can also modify the DLL search path for specific load operations by supplying the `LOAD_WITH_ALTERED_SEARCH_PATH` flag to the` LoadLibraryEx` API.
@@ -1728,7 +1728,7 @@ receipt.
 #### DLL Name Redirection
 
 - Before attempting to **resolve a DLL name** string to a file, the loader attempts to apply DLL name **redirection rules**.
-- These redirection rules are used to extend or override portions of the DLL namespace—which normally corresponds to the Win32 file system namespace—to extend the Windows application model.
+- These redirection rules are used to extend or override portions of the DLL namespace — which normally corresponds to the Win32 file system namespace — to extend the Windows application model.
 - In order of application, they are:
   - **MinWin API Set Redirection**: The API set mechanism is designed to allow the Windows team to change the binary that exports a given system API in a manner that is transparent to apps.
   - **.LOCAL Redirection**: allows apps to redirect all loads of a specific DLL base name, regardless of whether a full path is specified, to a local copy of the DLL in the app directory.
@@ -1830,7 +1830,7 @@ structure Instead of doing this for each entry, however, WinDbg can do most of t
 
 ### API Sets
 
-- While SwitchBack uses **API redirection** for specific **application-compatibility** scenarios, there is a much more pervasive redirection mechanism used in Windows for all applications, called API Sets 👍.
+- While SwitchBack uses **API redirection** for specific **application-compatibility** scenarios, there is a much more pervasive redirection mechanism used in Windows for all apps, called API Sets 👍.
 - Its purpose is to enable **fine-grained categorization** of Windows APIs into **sub-DLLs** instead of having **large multipurpose DLLs** that span nearly thousands of APIs that might not be needed on all types of Windows systems today and in the future.
 - For example, the following graphic shows that `Kernel32.dll`, which is a core Windows library, imports from many other DLLs, beginning with `API-MS-WIN`. Each of these DLLs contain a small
 subset of the APIs that `Kernel32` normally provides, but together they make up the entire API surface exposed by `Kernel32.dll`. The `CORE-STRING` library, for instance, provides only the Windows base **string** functions.
@@ -2019,8 +2019,8 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
 
 ### Kernel Transaction Manager
 
-- Applications can, with very little effort, gain **automatic error-recovery** capabilities by using a kernel mechanism called the **Kernel Transaction Manager** (KTM), which provides the facilities required to perform such transactions and enables services such as the **distributed transaction coordinator** (DTC) in user mode to take advantage of them. Any developer who uses the appropriate APIs can take advantage of these services as well.
-- As the heart of transaction support, KTM allows transactional resource managers such as **NTFS** and the **registry** to coordinate their updates for a specific set of changes made by an application.
+- Apps can, with very little effort, gain **automatic error-recovery** capabilities by using a kernel mechanism called the **Kernel Transaction Manager** (KTM), which provides the facilities required to perform such transactions and enables services such as the **distributed transaction coordinator** (DTC) in user mode to take advantage of them. Any developer who uses the appropriate APIs can take advantage of these services as well.
+- As the heart of transaction support, KTM allows transactional resource managers such as **NTFS** and the **registry** to coordinate their updates for a specific set of changes made by an app.
   - NTFS uses an extension to support transactions, called **TxF**.
   - The registry uses a similar extension, called **TxR**.
   - These kernel-mode resource managers work with KTM to coordinate the transaction state, just as user-mode resource managers use DTC to coordinate transaction state across multiple user-mode resource managers.
@@ -2038,8 +2038,8 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
 - Hotpatching doesn’t simply allow files to be overwritten during execution; instead, it includes a **complex** series of operations that can be requested (and combined). These operations are listed below:
   | Operation |  Meaning | Usage  |
   | --------- | -------- | -------|
-  | Rename Image | Replacing a DLL that is on the disk and currently used by other applications, or replacing a driver that is on the disk and is currently loaded by the kernel | When an entire library in user mode needs to be replaced, the kernel can detect which processes and services are referencing it, unload them, and then update the DLL and restart the programs and services (which is done through the restart manager). When a driver needs to be replaced, the kernel can unload the driver (the driver requires an unload routine), update it, and then reload it. |
-  | Object Swap | Atomically renaming an object in the object directory namespace | When a file (typically a *known DLL*) needs to be renamed atomically but not affect any process that might be using it (so that the process can start using the new file immediately, using the old handle, without requiring an application restart) |
+  | Rename Image | Replacing a DLL that is on the disk and currently used by other apps, or replacing a driver that is on the disk and is currently loaded by the kernel | When an entire library in user mode needs to be replaced, the kernel can detect which processes and services are referencing it, unload them, and then update the DLL and restart the programs and services (which is done through the restart manager). When a driver needs to be replaced, the kernel can unload the driver (the driver requires an unload routine), update it, and then reload it. |
+  | Object Swap | Atomically renaming an object in the object directory namespace | When a file (typically a *known DLL*) needs to be renamed atomically but not affect any process that might be using it (so that the process can start using the new file immediately, using the old handle, without requiring an app restart) |
   | Patch Function | Code Replacing the code of one or more functions inside an image file with another version | If a DLL or driver can’t be replaced or renamed during run time, functions in the image can be directly patched A hotpatch DLL that contains the newer code is jumped to whenever an older function is called. |
   | Refresh System DLL | Reload the memory mapped section object for Ntdll dll | The system native library, Ntdll dll, is loaded only once during boot-up and then simply duplicated into the address space of every new process If it has been hotpatched, the system must refresh this section to load the newer version |
 
@@ -2070,8 +2070,10 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
 - x64 Windows implements KPP, also referred to as **PatchGuard**. First introduced with Windows XP x64 and Windows Server 2003 x64 😮.
 - KPP’s job on the system is similar to what its name implies—it attempts to deter common techniques for patching the system, or hooking it.
 
-| Components Protected by KPP | Component | Legitimate Usage | Potential Malicious Usage |
-| ----------------------------|-----------|------------------|---------------------------|
+🎯 Components Protected by KPP:
+
+| Component | Legitimate Usage | Potential Malicious Usage |
+| ----------|------------------|---------------------------|
 | *Ntoskrnl.exe*, *Hal.dll*, *Ci.dll*, *Kdcom.dll*, *Pshed.dll*, *Clfs.sys*, *Ndis.sys*, *Tcpip.sys* | Kernel, HAL, and their dependencies. Lower layer of network stack | Patching code in the kernel and/or HAL to subvert normal operation and behavior Patching Ndis sys to silently add back doors on open ports |
 | Global Descriptor Table (GDT) | CPU hardware protection for the implementation of ring privilege levels (Ring 0 vs Ring 3) | Ability to set up a **callgate**, a CPU mechanism through which user (Ring 3) code could perform operations with kernel privileges (Ring 0) |
 | Interrupt Descriptor Table (IDT) | Table read by the CPU to deliver interrupt vectors to the correct handling routine | Malicious drivers could intercept file I/Os directly at the interrupt level, or hook page faults to hide contents of memory. Rootkits could hook the `INT2E` handler to hook all system calls from a single point |
@@ -2086,6 +2088,6 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
 
 ### Code Integrity
 
-- Code integrity is a Windows mechanism that **authenticates** the **integrity** and source of executable images (such as applications, DLLs, or drivers) by validating a digital certificate contained within the image’s resources.
+- Code integrity is a Windows mechanism that **authenticates** the **integrity** and source of executable images (such as apps, DLLs, or drivers) by validating a digital certificate contained within the image’s resources.
 - This mechanism works in conjunction with system policies, defining how signing should be enforced. One of these policies is the **Kernel Mode Code Signing (KMCS)** policy, which requires that kernel-mode code be signed with a valid **Authenticode** certificate rooted by one of several recognized code signing authorities, such as *Verisign* or *Thawte*.
 - ⚠️ The KMCS policy is only fully enforced on 64-bit machines
