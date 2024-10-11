@@ -2065,5 +2065,27 @@ VM using the following calculation based on the VM’s memory report: *Memory Pr
   82227eaa ebfc jmp nt!FsRtlTeardownPerFileContexts+0x169 (82227ea5)
   ```
 
-### Kernel Patch Protection
+### Kernel Patch Protection (KPP)
 
+- x64 Windows implements KPP, also referred to as **PatchGuard**. First introduced with Windows XP x64 and Windows Server 2003 x64 😮.
+- KPP’s job on the system is similar to what its name implies—it attempts to deter common techniques for patching the system, or hooking it.
+
+| Components Protected by KPP | Component | Legitimate Usage | Potential Malicious Usage |
+| ----------------------------|-----------|------------------|---------------------------|
+| *Ntoskrnl.exe*, *Hal.dll*, *Ci.dll*, *Kdcom.dll*, *Pshed.dll*, *Clfs.sys*, *Ndis.sys*, *Tcpip.sys* | Kernel, HAL, and their dependencies. Lower layer of network stack | Patching code in the kernel and/or HAL to subvert normal operation and behavior Patching Ndis sys to silently add back doors on open ports |
+| Global Descriptor Table (GDT) | CPU hardware protection for the implementation of ring privilege levels (Ring 0 vs Ring 3) | Ability to set up a **callgate**, a CPU mechanism through which user (Ring 3) code could perform operations with kernel privileges (Ring 0) |
+| Interrupt Descriptor Table (IDT) | Table read by the CPU to deliver interrupt vectors to the correct handling routine | Malicious drivers could intercept file I/Os directly at the interrupt level, or hook page faults to hide contents of memory. Rootkits could hook the `INT2E` handler to hook all system calls from a single point |
+| System Service Descriptor Table (SSDT) | Table containing the array of pointers for each system call handler. | Rootkits could modify the output or input of calls from user mode and hide processes, files, or registry keys |
+| Processor Machine State Registers (MSRs) |  LSTAR MSR is used to set the handler of the `SYSENTER` and/or `SYSCALL` instructions used for system calls | LSTAR could be overwritten by a malicious driver to provide a single hook for all system calls performed on the system
+| `KdpStub`, `KiDebugRoutine`, `KdpTrap` function pointers | Used for run-time configuration of where exceptions should be delivered, based on whether a **kernel debugger** is remotely connected to the machine | Value of the pointers could be overwritten by a malicious rootkit to take control of the system at predetermined times and perform invisible background tasks |
+| `PsInvertedFunctionTable` | Cache of exception directories used on x64, allowing quick mapping between code where an exception happened and its handler | Could be used to take control of the system during the exception handling of unrelated system code, including KPP’s own exception code responsible for detecting modifications in the first place. |
+| Kernel stacks | Store function arguments, the call stack (where a function should return), and variables | A driver could allocate memory on the side, set it as a kernel stack for a thread, and then manipulate its contents to redirect calls and parameters |
+| Object types | Definitions for the various objects (such as processes and files) that the system supports through the object manager | Could be used as part of a technique called DKOM (Direct Kernel Object Modification) to modify system behavior — for example, by hooking the object callbacks that each object type has registered |
+| Other Code | related to bug-checking the system during a KPP violation, executing the DPCs and timers associated with KPP, and more | By modifying certain parts of the system used by KPP, malicious drivers could attempt to silence, ignore, or otherwise cripple KPP |
+- When KPP detects a change in any of the structures mentioned (as well as some other internal consistency checks), it **crashes** the system with code `0x109—CRITICAL_STRUCTURE_CORRUPTION`.
+
+### Code Integrity
+
+- Code integrity is a Windows mechanism that **authenticates** the **integrity** and source of executable images (such as applications, DLLs, or drivers) by validating a digital certificate contained within the image’s resources.
+- This mechanism works in conjunction with system policies, defining how signing should be enforced. One of these policies is the **Kernel Mode Code Signing (KMCS)** policy, which requires that kernel-mode code be signed with a valid **Authenticode** certificate rooted by one of several recognized code signing authorities, such as *Verisign* or *Thawte*.
+- ⚠️ The KMCS policy is only fully enforced on 64-bit machines
