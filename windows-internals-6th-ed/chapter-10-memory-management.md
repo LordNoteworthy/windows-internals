@@ -315,11 +315,11 @@ Number of regions cached: 292
                NonPaged                  Paged
  Tag     Allocs         Used     Allocs         Used
 
- Cont      1094      6525216          0            0	Contiguous physical memory allocations for device drivers 
+ Cont      1094      6525216          0            0	Contiguous physical memory allocations for device drivers
  EtwB       128      5041136          4       163840	Etw Buffer , Binary: nt!etw
- AmlC        31      2031616          0            0	ACPI AMLI Pooltags 
- Pool         5      1705552          0            0	Pool tables, etc. 
- AmlH         3      1572864          0            0	ACPI AMLI Pooltags 
+ AmlC        31      2031616          0            0	ACPI AMLI Pooltags
+ Pool         5      1705552          0            0	Pool tables, etc.
+ AmlH         3      1572864          0            0	ACPI AMLI Pooltags
  ...
 
  kd> !poolused 4
