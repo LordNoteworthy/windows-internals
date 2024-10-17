@@ -37,7 +37,7 @@ the kernel (Win32k) needs to maintain state information about GUI processes.
 fields as long as the pointer is known.
   - Because the `!process` does not actually output this pointer (even though it is stored in the `EPROCESS` object), the field must be inspected manually with dt `nt!_EPROCESS Win32Process` followed by an `EPROCESS` pointer.
 
-### Protected Processes
+## Protected Processes
 
 - In the Windows security model, any process running with a token containing the **debug** privilege (such as an **administrator**’s account) can request **any** access right that it desires to any other process running on the machine.
   - For example, it can RW **arbitrary** process memory, inject code, suspend and resume threads, and query information on other processes 🤸‍♀️.
@@ -51,3 +51,72 @@ fields as long as the pointer is known.
 - At the kernel level, support for protected processes is twofold:
   1. The bulk of process creation occurs in KM to avoid injection attacks.
   2. Protected processes have a special bit set in their `EPROCESS` structure that modifies the behavior of security-related routines in the process manager to deny certain access rights that would normally be granted to administrators. In fact, the only access rights that are granted for protected processes are `PROCESS_QUERY`/`SET_LIMITED_INFORMATION`, `PROCESS_TERMINATE`, and `PROCESS_SUSPEND_RESUME`. Certain access rights are also disabled for threads running inside protected processes.
+
+## Flow of CreateProcess
+
+- A Windows subsystem process is created when a call is make to one of the process-creation functions, such as `CreateProcess`, `CreateProcessAsUser`, `CreateProcessWithTokenW`, or `CreateProcessWithLogonW`.
+- Here is an overview of the stages Windows follows to create a process:
+  1. **Validate parameters**; convert Windows subsystem flags and options to their native counterparts; parse, validate, and convert the attribute list to its native counterpart.
+  2. Open the image file (.exe) to be executed inside the process.
+  3. Create the Windows **executive** process object.
+  4. Create the **initial thread** (stack, context, and Windows **executive** thread object)
+  5. Perform post-creation, **Windows-subsystem-specific** process initialization.
+  6. Start execution of the initial thread (unless the `CREATE_SUSPENDED` flag was specified).
+  7. In the context of the new process and thread, complete the initialization of the address space (such as load **required DLLs**) and begin execution of the program.
+<p align="center"><img src="./assets/process-creation-stages.png" width="400px" height="auto"></p>
+
+### Stage 1: Converting and Validating Parameters and Flags
+
+- You can specify more than one **priority class** for a single `CreateProcess` call but Windows chooses the lowest-priority class set.
+- If no priority class is specified for the new process, the priority class defaults to **Normal** unless the priority class of the process that created it is **Idle** or **Below Normal**, in which case the priority class of the new process will have the same priority as the creating class.
+- If a **Real-time** priority class is specified for the new process and the process’ caller doesn’t have the *Increase Scheduling Priority* privilege, the **High** priority class is used instead.
+- If no desktop is specified in `CreateProcess`, the process is associated with the caller’s **current desktop**.
+- If the creation flags specify that the process will be **debugged**, `Kernel32` initiates a connection to the native debugging code in `Ntdll.dll` by calling `DbgUiConnectToDbg` and gets a handle to the debug object from the current TEB.
+- The user-specified attribute list is **converted** from Windows subsystem format to **native** format and internal attributes are added to it.
+
+<details><summary>Process Attributes:</summary>
+
+
+| Native Attribute |  Equivalent Windows Attribute | Type | Description |
+|------------------|-------------------------------|------|-------------|
+| PS_CP_PARENT_PROCESS | PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. Also used when elevating | Input | Handle to the parent process |
+| PS_CP_DEBUG_OBJECT   | N/A – used when using DEBUG_PROCESS as a flag | Input | Debug object if process is being started debugged |
+| PS_CP_PRIMARY_TOKEN  | N/A – used when using `CreateProcessAsUser/WithToken` | Input | Process token if `CreateProcessAsUser` was used |
+| PS_CP_CLIENT_ID      | N/A – returned by Win32 API as a parameter | Output | Returns the TID and PID of the initial thread and the process |
+| PS_CP_TEB_ADDRESS    | N/A – internally used and not exposed | Output |  Returns the address of the TEB for the initial thread |
+| PS_CP_FILENAME       | N/A – used as a parameter in `CreateProcess` API | Input | Name of the process that should be created |
+| PS_CP_IMAGE_INFO     | N/A – internally used and not exposed | Output | Returns `SECTION_IMAGE_INFORMATION`, which contains information on the version, flags, and subsystem of the executable, as well as the stack size and entry point |
+| PS_CP_MEM_RESERVE    | N/A – internally used by SMSS and CSRSS | Input | Array of virtual memory reservations that should be made during initial process address space creation, allowing guaranteed availability because no other allocations have taken place yet |
+| PS_CP_PRIORITY_CLASS | N/A – passed in as a parameter to the CreateProcess API | Input | Priority class that the process should be given |
+| PS_CP_ERROR_MODE     | N/A – passed in through `CREATE_DEFAULT_ERROR_MODE` flag | Input | Hard error-processing mode for the process |
+| PS_CP_STD_HANDLE_INFO| | Input | Specifies if standard handles should be duplicated, or if new handles should be created |
+| PS_CP_HANDLE_LIST    | `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` | Input | List of handles belonging to the parent process that should be inherited by the new process|
+| PS_CP_GROUP_AFFINITY | `PROC_THREAD_ATTRIBUTE_GROUP_AFFINITY` | Input | Processor group(s) the thread should be allowed to run on |
+| PS_CP_PREFERRED_NODE | `PROC_THREAD_ATTRIBUTES_PRFERRED_NODE` | Input | Preferred (ideal) node that should be associated with the process. It affects the node on which the initial process heap and thread stack will be created |
+| PS_CP_IDEAL_PROCESSOR| `PROC_THREAD_ATTTRIBUTE_IDEAL_PROCESSOR` | Input | Preferred (ideal) processor that the thread should be scheduled on |
+| PS_CP_UMS_THREAD     | `PROC_THREAD_ATTRIBUTE_UMS_THREAD` | Input | Contains the UMS attributes, completion list, and context |
+| PS_CP_EXECUTE_OPTIONS| `PROC_THREAD_MITIGATION_POLICY` | Input | Contains information on which mitigations (SEHOP, ATL Emulation, NX) should be enabled/disabled for the process |
+
+</details>
+
+### Stage 2: Opening the Image to Be Executed
+
+- The first stage in `NtCreateUserProcess` is to find the appropriate Windows image that will run the executable file specified by the caller and to create a section object to later map it into the address space of the new process.
+<p align="center"><img src="./assets/windows-image-to-activate.png" width="300px" height="auto"></p>
+
+- Now that `NtCreateUserProcess` has found a valid Windows executable image, it looks in the registry under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options` to see whether a subkey with the file name and extension of the executable image exists there.
+  - If it does, `PspAllocateProcess` looks for a value named *Debugger* for that key. If this value is present, the image to be run becomes the string in that value and `CreateProcess` restarts at Stage 1.
+
+<details><summary>Decision Tree for Stage 1 of CreateProcess:</summary>
+
+| If the Image ... | Create State Code | This Image Will Run |  ... and This Will Happen |
+| ---------------- | ----------------- | ------------------- | ------------------------- |
+| Is a POSIX executable file | PsCreateSuccess | `Posix.exe` | CreateProcess restarts Stage 1 |
+| Is an MS-DOS application with an exe, com, or pif extension | PsCreateFailOnSectionCreate | `Ntvdm.exe` | CreateProcess restarts Stage 1 |
+| Is a Win16 application | PsCreateFailOnSectionCreate | `Ntvdm.exe` | CreateProcess restarts Stage 1|
+| Is a Win64 application on a 32-bit system (or a PPC, MIPS, or Alpha Binary) | PsCreateFailMachineMismatch  | N/A | CreateProcess will fail |
+| Has a Debugger key with another image name | PsCreateFailExeName | Name specified in the Debugger key | CreateProcess restarts Stage 1 |
+| Is an invalid or damaged Windows EXE | PsCreateFailExeFormat | N/A | CreateProcess will fail Cannot be opened PsCreateFailOnFileOpen N/A CreateProcess will fail |
+| Is a command procedure (application with a bat or cmd extension) | PsCreateFailOnSectionCreate | `Cmd.exe` | CreateProcess restarts Stage 1 |
+
+</details>
