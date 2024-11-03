@@ -120,3 +120,62 @@ fields as long as the pointer is known.
 | Is a command procedure (application with a bat or cmd extension) | PsCreateFailOnSectionCreate | `Cmd.exe` | CreateProcess restarts Stage 1 |
 
 </details>
+
+### Stage 3: Creating the Windows Executive Process Object (PspAllocateProcess)
+
+- At this point, `NtCreateUserProcess` has opened a valid Windows executable file and created a **section object** to map it into the new process address space. Next it creates a Windows executive process object to run the image by calling the internal system function `PspAllocateProcess`. Creating the executive process object involves the following substages:
+  - Setting up the `EPROCESS` object
+  - Creating the initial process address space
+  - Initializing the kernel process structure(`KPROCESS`)
+  - Setting up the PEB
+  - Concluding the setup of the process address space (which includes initializing the working set list and VA space descriptors and mapping the image into address space).
+
+#### Stage 3A: Setting Up the EPROCESS Object
+
+- **Affinity & Node Setup**: The process inherits the CPU affinity and NUMA node from the parent, unless explicitly set during creation.
+- **Priority Inheritance**: The I/O and page priority are inherited from the parent, or default values are used if no parent exists.
+- **Exit Status**: The new process is marked as pending.
+- **Error Handling**: Error handling modes are set, either inherited from the parent or defaulting to showing all errors.
+- **Parent Process Info**: The parent process ID is stored in the new process.
+- **Execution Options**: The process checks execution options for settings like **large page** mapping or **NUMA** assignments.
+- **ASLR & Privileges**: Stack randomization is disabled if necessary, and the system acquires privileges required for process creation.
+- **Token & Security**: The process inherits the parent’s security token or uses a specified token, ensuring privilege checks are passed.
+- **Session Handling**: If the process spans across sessions, the parent temporarily attaches to handle resources correctly.
+- **Quota & Working Set**: The process inherits or gets new resource quotas, including working set sizes (memory limits).
+- **Address Space & Affinity**: The process address space is initialized, and **group affinity** is set based on inheritance or system settings.
+- **KPROCESS Initialization**: The `KPROCESS` part of the process object is initialized.
+- **Priority & Handle Table**: The process inherits or sets its own priority class, and the handle table is initialized with inheritable handles.
+- **Final Settings**: Performance options, process priority, and other settings are finalized, including the **PEB** and mitigation options like **No-Execute** (NX) support.
+- **Process Creation Time**: The process ID and creation time are set, but the process is not yet inserted into the system's process table.
+
+#### Stage 3B: Creating the Initial Process Address Space
+
+- The initial address space includes:
+  - **Page Directory**: Creates the main page directory, which may involve multiple directories for systems with more complex page tables (e.g., PAE mode or 64-bit systems).
+  - **Hyperspace Page**: Allocates a special memory page used for managing the process's memory.
+  - **VAD Bitmap Page**: Allocates a page for tracking the Virtual Address Descriptors (VAD) in the process.
+  - **Working Set List**: Allocates memory for the process’s working set, which tracks the active memory pages.
+
+#### Stage 3C: Creating the Kernel Process Structure
+
+- Involves initializing the `KPROCESS` (Pcb) part of the process object. This is done through `KeInitializeProcess`, which sets up various kernel-level attributes of the process. Key steps include:
+    - **Thread List**: Initializes an empty doubly-linked list to track all threads within the process.
+    - **Default Quantum**: Sets an initial thread scheduling quantum value (default is 6), which will later be adjusted based on system settings.
+    - **Base Priority**: Sets the process's base priority as calculated in *Stage 3A*.
+    - **Processor & Group Affinity**: Configures the default processor and group affinity for the process's threads, either inherited or set in earlier stages.
+    - **Swapping State**: Marks the process as **resident** in memory.
+    - **Thread Seed**: Assigns an ideal processor for the process based on the system's **round-robin** algorithm, ensuring load balancing across processors.
+
+#### Stage 3D: Concluding the Setup of the Process Address Space
+
+#### Stage 3E: Setting Up the PEB
+
+#### Stage 3F: Completing the Setup of the Executive Process Object (PspInsertProcess)
+
+### Stage 4: Creating the Initial Thread and Its Stack and Context
+
+### Stage 5: Performing Windows Subsystem–Specific PostInitialization
+
+### Stage 6: Starting Execution of the Initial Thread
+
+### Stage 7: Performing Process Initialization in the Context of the New Process
