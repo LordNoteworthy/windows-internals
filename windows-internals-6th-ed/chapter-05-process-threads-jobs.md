@@ -168,9 +168,33 @@ fields as long as the pointer is known.
 
 #### Stage 3D: Concluding the Setup of the Process Address Space
 
+- Setting up a new process's address space in Windows involves several steps coordinated by the memory manager:
+  - The virtual memory manager sets the process's **last trim time**, which the working set manager uses to determine when to trim the process's working set.
+  - The **working set list** for the process is initialized, allowing page faults to be handled.
+  - The **section** created when opening the image file is mapped into the process’s address space, setting the **base address**.
+  - `Ntdll.dll` is mapped, and for *Wow64* processes, the 32-bit `Ntdll.dll` is mapped as well.
+  - A new **session** is created if required, typically for session-based processes managed by SMSS.
+  - Standard **handles** are **duplicated** and stored in the process's parameter structure.
+  - **Memory reservations** are processed, with options to reserve the first 1 or 16 MB for low-address requirements.
+  - **User parameters** are added, with relative memory adjustments.
+  - **Affinity** details are written into the PEB.
+  - The **MinWin** API redirection set is mapped into the process/
+
 #### Stage 3E: Setting Up the PEB
 
+- `NtCreateUserProcess` calls `MmCreatePeb`, which first maps the systemwide NLS tables into the process’ address space.
+- It next calls `MiCreatePebOrTeb` to allocate a page for the PEB and then initializes a number of fields, most of them based on internal variables that were configured through the registry, such as `MmHeap*` values, `MmCriticalSectionTimeout`, and `MmMinimumStackCommitInBytes`.
+- Some of these fields can be **overridden** by settings in the linked executable image, such as the Windows version in the PE header or the affinity mask in the load configuration directory of the PE header.
+
 #### Stage 3F: Completing the Setup of the Executive Process Object (PspInsertProcess)
+
+- In the final stage of process creation, `PspInsertProcess` completes setup for the executive process object with these steps:
+  - If system-wide process **auditing** is enabled, it logs the process creation in the Security event log.
+  - If the parent process is part of a **job**, the job is inherited by the new process and added to the job’s session.
+  - The new process is added to the list of **active processes**.
+  - The parent’s **debug port** is inherited unless specified otherwise, or a new debug port is attached if one is provided.
+  - The function checks that the process’s **group affinity** aligns with any restrictions set by its job object, preventing conflicts between job and process permissions.
+  - Finally, `ObOpenObjectByPointer` creates a handle for the process and returns it, with process creation callbacks triggered only once the first thread is created.
 
 ### Stage 4: Creating the Initial Thread and Its Stack and Context
 
