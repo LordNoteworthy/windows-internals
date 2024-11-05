@@ -22,7 +22,7 @@
 - The `EPROCESS` and `KPROCESS` structures are accessible only from kernel mode. The important fields of the PEB are illustrated below:
 <p align="center"><img src="./assets/peb-fields.png" width="400px" height="auto"></p>
 
-- bEcause each session has its own instance of the Windows subsystem, the `CSR_PROCESS` structures are maintained by the *Csrss* process within each individual session.
+- Because each session has its own instance of the Windows subsystem, the `CSR_PROCESS` structures are maintained by the *Csrss* process within each individual session.
 <p align="center"><img src="./assets/csr_process.png" width="400px" height="auto"></p>
 
 - You can dump the `CSR_PROCESS` structure with the `!dp` command in the `user`-mode debugger.
@@ -218,7 +218,7 @@ fields as long as the pointer is known.
 - After `NtCreateUserProcess` completes preliminary setup, it calls `PspInsertThread` to finalize thread creation with these steps:
   - Checks the thread’s **group affinity** to ensure it aligns with **job limits**.
   - Verifies the process and thread are still active; fails if either has been terminated.
-  - Initializes `KTHREAD` (via `KeStartThread`) by inheriting scheduler settings from the owner process, setting the ideal node and processor, updating group affinity, and inserting it in process lists maintained by `KPROCESS`. On x64. another systemwide list of processes, `KiProcessListHead`, is used by PatchGuard to maintain the integrity of the executive’s `PsActiveProcessHead`.
+  - Initializes `KTHREAD` (via `KeStartThread`) by inheriting scheduler settings from the owner process, setting the ideal node and processor, updating group affinity, and inserting it in process lists maintained by `KPROCESS`. On x64. another system-wide list of processes, `KiProcessListHead`, is used by PatchGuard to maintain the integrity of the executive’s `PsActiveProcessHead`.
   - Increments the process’s thread count, updates the high watermark if this is a new maximum, and freezes the primary token if this is the second thread.
   - Increments the UMS thread count if applicable.
   - Inserts the thread into the process’s list, suspending it if requested.
@@ -228,6 +228,19 @@ fields as long as the pointer is known.
   - The thread is readied for execution by calling `KeReadyThread` It enters the deferred ready queue, the process is paged out, and a page in is requested.
 
 ### Stage 5: Performing Windows Subsystem–Specific PostInitialization
+
+`Kernel32.dll` then performs various operations related to Windows subsystem–specific operations to finish initializing the process.
+- Before an executable runs in Windows, multiple checks are performed:
+  - **Validation Checks**: Verifies the executable's image version and applies group policy restrictions (e.g., **application certification**). On certain Windows Server editions, additional checks prevent use of **disallowed APIs**.
+  - **Restricted Token Creation**: If software restriction policies apply, a restricted token is created.
+  - **Compatibility Check**: The application-compatibility database is queried for entries related to the process. Compatibility settings are stored but applied later.
+- Next, `Kernel32.dll` sends a message to the Windows subsystem to initialize structures for **SxS**, including **manifest** information and** DLL redirection** paths. The subsystem receives process and thread handles, creation flags, UI language, and other initialization data, performing these steps:
+  - **Process and Thread Initialization**: `CsrCreateProcess` duplicates handles, sets process priority, and allocates structures (`CSR_PROCESS` and `CSR_THREAD`) to track the new process and thread.
+  - **Session Management**: Updates session process count and assigns a default shutdown level.
+  - **Exception Handling**: Links the exception port to notify the subsystem of second-chance exceptions.
+  - **GUI Initialization**: Shows the application start cursor, allowing five seconds for a GUI response before reverting to a standard cursor.
+- For **elevated processes**, further checks include whether the process was launched via `ShellExecute` with *AppInfo* service elevation. If so, the token’s virtualization flag is enabled, or an elevation request is sent for re-evaluation.
+- **Protected processes** skip most **compatibility** and **elevation** checks since they are designed with built-in security to avoid vulnerabilities associated with **shimming** and **virtualization**.
 
 ### Stage 6: Starting Execution of the Initial Thread
 
