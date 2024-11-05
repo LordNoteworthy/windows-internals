@@ -198,6 +198,35 @@ fields as long as the pointer is known.
 
 ### Stage 4: Creating the Initial Thread and Its Stack and Context
 
+- At this point, the Windows executive process object is completely set up. It still has no thread, however, so it can’t do anything yet.
+- Normally, the `PspCreateThread` routine is responsible for all aspects of thread creation and is called by `NtCreateThread` when a new thread is being created.
+- However, because the **initial thread** is created **internally** by the kernel without user-mode input, the two helper routines that `PspCreateThread` relies on are used instead:
+`PspAllocateThread` and `PspInsertThread`.
+- `PspAllocateThread` handles the actual creation and initialization of the executive thread object itself, while `PspInsertThread` handles the creation of the thread handle and security attributes and the call to `KeStartThread` to turn the executive object into a schedulable thread on the system.
+- However, the thread won’t do anything yet—it is created in a **suspended** state and isn’t resumed until the process is completely initialized.
+- `PspAllocateThread` creates a thread in a Windows process and includes these steps:
+  - Prevents **UMS** threads in Wow64 processes and disallows user-mode thread creation in system processes.
+  - Creates and initializes an executive thread object.
+  - Sets up CPU **rate limiting** if enabled.
+  - Initializes lists for **LPC**, **I/O** management, and **Executive**.
+  - Sets the thread **creation time** and **ID**.
+  - Prepares the thread's **stack and context**, initializing the Wow64 context if necessary.
+  - Allocates the **TEB**.
+  - Sets the user-mode start address (`RtlUserThreadStart`) in the **ETHREAD**.
+  - Calls `KeInitThread` to initialize `KTHREAD` with process priorities, affinity, and **machine-dependent hardware context** (context, trap, exception frames).
+  - Initializes the UMS state via `PspUmsInitThread` if the thread is a UMS thread.
+- After `NtCreateUserProcess` completes preliminary setup, it calls `PspInsertThread` to finalize thread creation with these steps:
+  - Checks the thread’s **group affinity** to ensure it aligns with **job limits**.
+  - Verifies the process and thread are still active; fails if either has been terminated.
+  - Initializes `KTHREAD` (via `KeStartThread`) by inheriting scheduler settings from the owner process, setting the ideal node and processor, updating group affinity, and inserting it in process lists maintained by `KPROCESS`. On x64. another systemwide list of processes, `KiProcessListHead`, is used by PatchGuard to maintain the integrity of the executive’s `PsActiveProcessHead`.
+  - Increments the process’s thread count, updates the high watermark if this is a new maximum, and freezes the primary token if this is the second thread.
+  - Increments the UMS thread count if applicable.
+  - Inserts the thread into the process’s list, suspending it if requested.
+  - Sets up **CPU rate** control if enabled.
+  - Calls registered thread and process callbacks.
+  - The handle is created with `ObOpenObjectByPointer`
+  - The thread is readied for execution by calling `KeReadyThread` It enters the deferred ready queue, the process is paged out, and a page in is requested.
+
 ### Stage 5: Performing Windows Subsystem–Specific PostInitialization
 
 ### Stage 6: Starting Execution of the Initial Thread
