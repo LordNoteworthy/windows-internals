@@ -244,4 +244,7 @@ fields as long as the pointer is known.
 
 ### Stage 6: Starting Execution of the Initial Thread
 
+- At this point, the process environment has been determined, resources for its threads to use have been allocated, the process has a thread, and the Windows subsystem knows about the new process.
+- Unless the caller specified the CREATE_ `SUSPENDED` flag, the **initial** thread is now **resumed** so that it can start running and perform the remainder of the process initialization work that occurs in the context of the new process (Stage 7).
+
 ### Stage 7: Performing Process Initialization in the Context of the New Process
