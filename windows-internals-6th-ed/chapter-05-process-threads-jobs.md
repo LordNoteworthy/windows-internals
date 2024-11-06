@@ -248,3 +248,14 @@ fields as long as the pointer is known.
 - Unless the caller specified the CREATE_ `SUSPENDED` flag, the **initial** thread is now **resumed** so that it can start running and perform the remainder of the process initialization work that occurs in the context of the new process (Stage 7).
 
 ### Stage 7: Performing Process Initialization in the Context of the New Process
+
+The new thread begins by running the kernel-mode routine KiThreadStartup, which lowers the IRQL level (DPC ➡️ APC) and calls `PspUserThreadStartup`, passing the user-defined start address. `PspUserThreadStartup` then:
+  - Disables **swapping** of the primary process **token** at runtime, intended only for *POSIX* support.
+  - Sets Locale ID and the **ideal processor** in the TEB using kernel-mode data structures.
+  - Checks if thread creation **failed**; if so, it proceeds with **cleanup**.
+  - Calls `DbgkCreateThread` to send debugger and image notifications. If image notifications weren't previously sent, notifications are sent for the process and for `Ntdll.dll`. These notifications occur now because the process ID wasn’t available during earlier image mapping.
+- If the process is being debugged, `PspUserThreadStartup` ensures debug events, such as `CREATE_PROCESS_DEBUG_INFO` and thread startup events, are sent to the debugger using `DbgkCreateThread`. It then waits for the debugger’s response via `ContinueDebugEvent`.
+- If the thread was marked for termination on startup, it terminates after the debugger and image notifications, ensuring they are not missed, even if the thread **does not fully execute**.
+- `PspUserThreadStartup` checks for application **prefetching**. If enabled, it invokes prefetcher and Superfetch to load pages referenced during the first 10 seconds of the process's last run. It then verifies if the systemwide cookie in `SharedUserData` is set. If not, it creates it from a hash of system data, used to encode pointers for security, especially in the heap manager.
+- Next, `PspUserThreadStartup` prepares the thread context to run `LdrInitializeThunk` in `Ntdll.dll` and `RtlUserThreadStart`. The `LdrInitializeThunk` routine handles **loader** setup, initializing the **heap manager**, **NLS** tables, **TLS** and **FLS** arrays, and **critical sections**. It loads necessary DLLs and triggers DLL entry points with `DLL_PROCESS_ATTACH`.
+- Finally, `NtContinue` restores the context to user mode, starting actual thread execution. `RtlUserThreadStart` calls the app EP, having already set up the process environment. This approach enables **exception handling** from `Ntdll.dll` and `Kernel32.dll` for any unhandled exceptions, and it coordinates thread exit and cleanup. This also allows developers to register their own unhandled exception handlers via `SetUnhandledExceptionFilter`.
