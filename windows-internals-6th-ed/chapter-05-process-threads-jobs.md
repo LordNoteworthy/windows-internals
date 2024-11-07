@@ -259,3 +259,20 @@ The new thread begins by running the kernel-mode routine KiThreadStartup, which 
 - `PspUserThreadStartup` checks for application **prefetching**. If enabled, it invokes prefetcher and Superfetch to load pages referenced during the first 10 seconds of the process's last run. It then verifies if the systemwide cookie in `SharedUserData` is set. If not, it creates it from a hash of system data, used to encode pointers for security, especially in the heap manager.
 - Next, `PspUserThreadStartup` prepares the thread context to run `LdrInitializeThunk` in `Ntdll.dll` and `RtlUserThreadStart`. The `LdrInitializeThunk` routine handles **loader** setup, initializing the **heap manager**, **NLS** tables, **TLS** and **FLS** arrays, and **critical sections**. It loads necessary DLLs and triggers DLL entry points with `DLL_PROCESS_ATTACH`.
 - Finally, `NtContinue` restores the context to user mode, starting actual thread execution. `RtlUserThreadStart` calls the app EP, having already set up the process environment. This approach enables **exception handling** from `Ntdll.dll` and `Kernel32.dll` for any unhandled exceptions, and it coordinates thread exit and cleanup. This also allows developers to register their own unhandled exception handlers via `SetUnhandledExceptionFilter`.
+
+## Thread Internals
+
+### Data Structures
+
+- At the OS level, a Windows thread is represented by an **executive** thread object. The executive thread object encapsulates an `ETHREAD` structure, which in turn contains a `KTHREAD`
+structure as its **first member**.
+- Similar to a Windows process, the `ETHREAD` structure and the other structures it points to exist in the **system** address space, with the exception of the **TEB**, which exists in the process address space.
+- The **Csrss** subsystem maintains a parallel structure for each thread created in a Windows subsystem application, called the `CSR_THREAD`.
+- For threads that have called a Windows subsystem `USER` or `GDI` function, the kernel-mode portion of the Windows subsystem (`Win32k.sys`) maintains a per-thread data structure (called the `W32THREAD`) that the `KTHREAD` structure points to.
+<p align="center"><img src="./assets/ethread.png" width="400px" height="auto"></p>
+
+- The first member of the `ETHREAD` is called the **Tcb** (Thread control block).
+- The `KTHREAD` structure (which is the Tcb member of the `ETHREAD`) contains information that the Windows kernel needs to perform thread **scheduling**, **synchronization**, and **timekeeping** functions.
+- 🔭 Use `dt nt!_ethread` and `dt nt!_kthread` or `dt nt!_ETHREAD Tcb` to dump these structures.
+- 🔭 To display thread information, use either the `!process` command (which displays all the threads of a process after displaying the process information) or the `!thread` command with the address of a thread object to display a specific thread.
+- 🔭 `Tlist` (utility from Debugging Tools for Windows) to display thread information, it shows `Win32StartAddr` which is the address passed to the `CreateThread`. All the other utilities, except *Process Explorer*, that show the thread start address show the actual start address (a function in `Ntdll.dll)`, not the application-specified start address.
