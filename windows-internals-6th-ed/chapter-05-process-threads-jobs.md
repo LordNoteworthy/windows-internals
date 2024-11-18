@@ -275,4 +275,23 @@ structure as its **first member**.
 - The `KTHREAD` structure (which is the Tcb member of the `ETHREAD`) contains information that the Windows kernel needs to perform thread **scheduling**, **synchronization**, and **timekeeping** functions.
 - 🔭 Use `dt nt!_ethread` and `dt nt!_kthread` or `dt nt!_ETHREAD Tcb` to dump these structures.
 - 🔭 To display thread information, use either the `!process` command (which displays all the threads of a process after displaying the process information) or the `!thread` command with the address of a thread object to display a specific thread.
-- 🔭 `Tlist` (utility from Debugging Tools for Windows) to display thread information, it shows `Win32StartAddr` which is the address passed to the `CreateThread`. All the other utilities, except *Process Explorer*, that show the thread start address show the actual start address (a function in `Ntdll.dll)`, not the application-specified start address.
+- 🔭 `Tlist` (utility from Debugging Tools for Windows) to display thread information, it shows `Win32StartAddr` which is the address passed to the `CreateThread`. All the other utilities, except *Process Explorer*, that show the thread start address show the actual start address (a function in `Ntdll.dll`), not the application-specified start address.
+- The **TEB** exists in the process address space (as opposed to the system space, because it needs to be writable from user-mode).
+- The TEB stores context information for the image loader and various Windows DLLs.
+- Internally, it is made up of a header called the **TIB (Thread Information Block)**, which mainly existed for **compatibility** with *OS/2* and *Win9x* apps. It also allows exception and stack information to be kept into a smaller structure when creating new threads by using an `Initial TIB`.
+<p align="center"><img src="./assets/teb.png" width="400px" height="auto"></p>
+
+- 🔭 You can dump the TEB structure with the `!teb` command.
+- The `CSR_THREAD` is analogous to the data structure of `CSR_PROCESS`, but
+it’s applied to threads. It stores a handle that `Csrss` keeps for the thread, various flags, and a pointer to the `CSR_PROCESS` for the thread.
+
+<p align="center"><img src="./assets/csr-thread.png" width="300px" height="auto"></p>
+
+- 🔭 You can dump the `CSR_THREAD` structure with the `!dt` command in the user-mode debugger while attached to a `Csrss` process: `!dt v 001c7630`.
+- Finally, the `W32THREAD` structure is analogous to the data structure of `WIN32PROCESS`, but it’s applied to threads. This structure mainly contains information useful for the GDI subsystem (**brushes and DC attributes**) as well as for the **User Mode Print Driver framework** (UMPD) that vendors use to write user-mode printer drivers. Finally, it contains a **rendering state** useful for desktop **compositing** and **anti-aliasing**.
+<p align="center"><img src="./assets/w32-thread.png" width="300px" height="auto"></p>
+
+- 🔭 You can dump the `W32THREAD` structure by looking at the output of the `!thread` command, which gives a pointer to it in the `Win32Thread` output field: `dt win32k!_w32thread ffb79dd8`.
+
+### Birth of a Thread
+
