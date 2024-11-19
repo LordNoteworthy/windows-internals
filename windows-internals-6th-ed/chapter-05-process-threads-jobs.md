@@ -295,3 +295,24 @@ it’s applied to threads. It stores a handle that `Csrss` keeps for the thread,
 
 ### Birth of a Thread
 
+- The steps in the following list are taken inside the Windows `CreateThread()` to create a Windows thread:
+  - The `CreateThread` function in `Kernel32.dll `converts Windows API parameters to native flags and sets up object parameters (`OBJECT_ATTRIBUTES`).
+  - It builds an **attribute list** containing the **client ID** and **TEB** address, which helps manage thread-specific data.
+  - `NtCreateThreadEx` is called to create the user-mode context, capture the attribute list, and invoke `PspCreateThread` to initialize a suspended executive thread object.
+  - The function allocates an **activation context** for the thread, checking and managing any required activation in the thread's TEB.
+  - The Windows subsystem is informed about the new thread, performing setup work.
+  - The thread handle and ID are returned to the caller.
+  - If not created with the `CREATE_SUSPENDED` flag, the thread resumes execution performing process initialization before starting at the specified **entry point**.
+
+### Examining Thread Activity
+
+- There are several tools that expose various elements of the state of Windows threads: **WinDbg** (in user-process attach and kernel-debugging mode), **Performance Monitor**, and **Process Explorer**.
+- :bookmark_tabs: Threads should be created at process **startup**, not every time a request is processed inside a process.
+- Unlike *Task Manager* and all other process/processor monitoring tools, Process Explorer uses the **clock cycle counter** designed for thread run-time accounting instead of the **clock interval timer**, so you will see a significantly different view of CPU consumption using Process Explorer. This is because many threads run for such a **short amount** of time that they are seldom (if ever) the **currently running thread** when the clock interval timer interrupt occurs, so they are not charged for much of their CPU time, leading clock-based tools to perceive a CPU usage of 0%.
+- ⚠️ Note For threads created by `CreateThread()` , Process Explorer displays the function passed to `CreateThread`, not the actual thread start function. That is because all Windows threads start at a common thread startup wrapper function (`RtlUserThreadStart` in `Ntdll.dll`). If Process Explorer showed the actual start address, most threads in processes would appear to have started at the **same address**, which would not be helpful in trying to understand what code the thread was executing. However, if Process Explorer can’t query the user-defined startup address (such as in the case of a **protected process**), it will show the wrapper function, so you will see all threads starting at `RtlUserThreadStart`.
+- Viewing the **thread stack** can also help you determine why a process is **hung**.
+- Finally, when looking at Wow64 process, Process Explorer shows both the **32-bit** and **64-bit stack** for threads. Because at the time of the **system call** proper, the thread has been switched to a 64-bit stack and context, simply looking at the thread’s 64-bit stack would reveal only half the story.
+
+### Limitations on Protected Process Threads
+
+
