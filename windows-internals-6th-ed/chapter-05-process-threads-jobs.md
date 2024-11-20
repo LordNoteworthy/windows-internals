@@ -332,3 +332,12 @@ it’s applied to threads. It stores a handle that `Csrss` keeps for the thread,
   - **Dynamic** thread creation is **enabled**.
 - And it will terminate threads whenever they’ve become **idle** for more than **10 seconds** (by default).
 - The job of the worker factory code is to manage either a **persistent**, **static**, or **dynamic** thread pool; wrap the **I/O completion port model** into interfaces that try to prevent stalled worker queues by automatically creating dynamic threads; and to **simplify global cleanup** and **termination** operations during a factory shutdown request (as well as to easily block new requests against the factory in such a scenario).
+
+### 🔭 EXPERIMENT: Looking at Thread Pools
+
+- Because of the advantages of using the thread-pool mechanism, many core system components and apps make use of it, especially when dealing with resources such as **ALPC ports** (to dynamically process incoming requests at an appropriate and scalable level).
+- In process explorer, double-click `Lsm.exe` in the list of processes, and click on the *Threads* tab You should see something similar to the image here:
+- The worker factory has created six worker threads at the request of Lsm.exe and based on its usage and the count of processors on the machine. These threads are identified as `TppWorkerThread`, which is `Ntdll.dll`’s worker entry point when calling the worker factory system calls.
+<p align="center"><img src="./assets/lsm-worker-threads.png" width="400px" height="auto"></p>
+
+## Thread Scheduling
