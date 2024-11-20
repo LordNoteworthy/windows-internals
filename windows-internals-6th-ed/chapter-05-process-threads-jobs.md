@@ -341,3 +341,60 @@ it’s applied to threads. It stores a handle that `Csrss` keeps for the thread,
 <p align="center"><img src="./assets/lsm-worker-threads.png" width="400px" height="auto"></p>
 
 ## Thread Scheduling
+
+- Windows uses a **priority-based**, **preemptive** scheduling system, meaning it always tries to run the most important (**highest-priority**) thread that's ready to work.
+- However, this gets a little more complicated when we consider **processor affinity** — a setting that determines which processors (or CPU cores) a thread is allowed or prefers to run on.
+-  By default, threads can run only on any available processors **within the processor group** associated with the process (to maintain compatibility with older versions of
+Windows which supported only 64 processors), but developers can alter processor affinity by using the **appropriate APIs** or by setting an affinity mask in the **image header**.
+
+### 🔭 EXPERIMENT: Viewing Ready Threads
+
+```c
+kd> !ready
+Processor 0: Ready Threads at priority 8
+THREAD 857d9030 Cid 0ec8.0e30 Teb: 7ffdd000 Win32Thread: 00000000 READY
+THREAD 855c8300 Cid 0ec8.0eb0 Teb: 7ff9c000 Win32Thread: 00000000 READY
+Processor 1: Ready Threads at priority 10
+THREAD 857c0030 Cid 04c8.0378 Teb: 7ffdf000 Win32Thread: fef7f8c0 READY
+Processor 1: Ready Threads at priority 9
+THREAD 87fc86f0 Cid 0ec8.04c0 Teb: 7ffd3000 Win32Thread: 00000000 READY
+THREAD 88696700 Cid 0ec8.0ce8 Teb: 7ffa0000 Win32Thread: 00000000 READY
+Processor 1: Ready Threads at priority 8
+THREAD 856e5520 Cid 0ec8.0228 Teb: 7ff98000 Win32Thread: 00000000 READY
+THREAD 85609d78 Cid 0ec8.09b0 Teb: 7ffd9000 Win32Thread: 00000000 READY
+THREAD 85fdeb78 Cid 0ec8.0218 Teb: 7ff72000 Win32Thread: 00000000 READY
+```
+
+- After a thread is selected to run, it runs for an amount of time called a **quantum**.
+- A quantum is the length of time a thread is allowed to run before another thread at the same priority level is given a turn to run.
+- Quantum values can vary from system to system and process to process for any of three reasons:
+  - **System configuration settings** (long or short quantums, variable or fixed quantums, and priority separation)
+  - **Foreground** or **background** status of the process
+  - Use of the **job** object to alter the quantum
+- A thread might not get to complete its quantum, however, because Windows implements a preemptive scheduler: if another thread with a **higher priority** becomes **ready** to run, the currently running thread might be preempted before finishing its time slice. In fact, a thread can be selected to run next and be preempted before even beginning its quantum ⚠️.
+- The routines that perform scheduling related-events are collectively called the **kernel’s dispatcher**:
+- The following events might require thread dispatching:
+  - A thread becomes **ready to execute** — for example, a thread has been **newly created** or has just been released from the **wait state**.
+  - A thread leaves the running state because its time quantum ends, it **terminates**, it **yields** execution, or it enters a **wait state**
+  - A thread’s **priority changes**, either because of a system service call or because Windows itself changes the priority value
+  - A thread’s **processor affinity changes** so that it will no longer run on the processor on which it was running.
+- Windows schedules at the **thread granularity**:
+  - This approach makes sense when you consider that processes don’t run but only provide resources and a context in which their threads run 😐.
+  - Because scheduling decisions are made strictly on a thread basis, **no consideration** is given to **what process the thread belongs** to.
+  - For example, if process A has 10 runnable threads, process B has 2 runnable threads, and all 12 threads are at the **same priority**, each thread would theoretically receive **one-twelfth** of the CPU time — Windows wouldn’t give 50 percent of the CPU to process A and 50 percent to process B 🪓.
+
+### Priority Levels
+
+- Windows uses **32 priority levels**, ranging from 0 through 31. These values divide up as follows:
+  - Sixteen real-time levels (16 through 31)
+  - Sixteen variable levels (0 through 15), out of which level 0 is reserved for the zero page thread.
+<p align="center"><img src="./assets/thread-priority-levels.png" width="300px" height="auto"></p>
+
+- The Windows API first organizes processes by the priority class (`PROCESS_PRIORITY_CLASS_`) to which they are assigned at creation: Real-time (4), High (3), Above Normal (7), Normal (2), Below Normal (5), and Idle (1).
+- It then assigns a **relative priority** of the individual threads within those processes. Here, the numbers represent a **priority delta** that is applied to the **process base priority**: Time-critical (15), Highest (2), Above-normal (1), Normal (0), Below-normal (–1), Lowest (–2), and Idle (–15)
+- ▶️ Therefore, in the Windows API, each thread has a **base priority** that is a function of its **process priority class** and its **relative thread priority**.
+- For example, a “Highest” thread will receive a thread base priority of two levels higher than the base priority of its process.
+- Whereas a process has only a single base priority value, each thread has two priority values: **current and base**.
+- Scheduling decisions are made based on the **current** priority. As explained in the
+following section on **priority boosting**, the system under certain circumstances increases the priority of threads in the **dynamic** range (0 through 15) for brief periods
+- Windows never adjusts the priority of threads in the **real-time** range (16 through 31), so they always have the same base and current priority.
