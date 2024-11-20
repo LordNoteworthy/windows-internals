@@ -315,4 +315,20 @@ it’s applied to threads. It stores a handle that `Csrss` keeps for the thread,
 
 ### Limitations on Protected Process Threads
 
+- Protected processes have several limitations in terms of which **access rights** will be granted, even to the users with the **highest privileges** on the system. These limitations also apply to threads inside such a process ‼️.
+- The only permissions granted are `THREAD_SUSPEND_RESUME` and `THREAD_SET/QUERY_ LIMITED_INFORMATION`.
 
+### Worker Factories (Thread Pools)
+
+- Worker factories refer to the internal mechanism used to implement user-mode thread pools.
+- This kernel-managed thread pool functionality in Windows is managed by an object manager type called **TpWorkerFactory**, as well as:
+  - four native system calls for managing the factory and its workers (`NtCreateWorkerFactory`, `NtWorkerFactoryWorkerReady`, `NtReleaseWorkerFactoryWorker`, `NtShutdownWorkerFactory`)
+  - two query/set native calls (`NtQueryInformationWorkerFactory` and `NtSetInformationWorkerFactory`),
+  - and a wait call (`NtWaitForWorkViaWorkerFactory`).
+- Because the kernel dynamically creates new threads as needed, based on minimum and maximum numbers provided, this also increases the scalability of apps using the new thread-pool implementation. A worker factory will create a new thread whenever all of the following conditions are met:
+  - The number of available workers is **lower** than the **maximum number of workers** configured for the factory (default of 500).
+  - The worker factory has **bound objects** (a bound object can be, for example, an ALPC port that this worker thread is waiting on) or a thread has been activated into the pool
+  - There are **pending I/O** request packet associated with a worker thread
+  - **Dynamic** thread creation is **enabled**.
+- And it will terminate threads whenever they’ve become **idle** for more than **10 seconds** (by default).
+- The job of the worker factory code is to manage either a **persistent**, **static**, or **dynamic** thread pool; wrap the **I/O completion port model** into interfaces that try to prevent stalled worker queues by automatically creating dynamic threads; and to **simplify global cleanup** and **termination** operations during a factory shutdown request (as well as to easily block new requests against the factory in such a scenario).
