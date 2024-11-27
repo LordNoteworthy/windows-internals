@@ -40,7 +40,7 @@
 * Impersonation is the ability to allow one thread to pass along to another thread the right for the second thread to use the first thread's security credentials.
 
 ##### Process Manager:
-* Responsible for process and thread management. 
+* Responsible for process and thread management.
 * It accomplishes this by working with the object manager to build process and thread objects amd with the memory manager to allocate virtual address space for the process.
 
 ##### LPC Facility
@@ -72,19 +72,19 @@
 * Provides a standard interface (which does not change from hardware platform to hardware platform) which all other executive level components access system resources (Like I/O architecture, DMA operations, Firmware and BIOS interfacing, Interrupt management ...).
 * Examples:
     - HAL provides to device drivers routines as - `READ_PORT_UCHAR()` or `WRITE_PORT_UCHAR()` - to allow them to read/write their devices' port without worrying about the underlying architecture.
-    - Processor architectures varies widely on handling priorities of hardware logical interrupts. HAL asbtract these priorities using Interrupt Request Level (IRQL) which are a set of symbolic values ranging from the IRQL_PASSIVE_LEVEL (lowest, used by user mode applications) to IRQL_HIGH_LEVEL which is the highest possible IRQL.
+    - Processor architectures varies widely on handling priorities of hardware logical interrupts. HAL abstract these priorities using Interrupt Request Level (IRQL) which are a set of symbolic values ranging from the IRQL_PASSIVE_LEVEL (lowest, used by user mode applications) to IRQL_HIGH_LEVEL which is the highest possible IRQL.
 
 
 #### Virtual Memory
 
 * Is a mechanism which provides a process the ability to use more than the physical memory available on the system.
 * The conversion of virtual memory to physical memory are done by a lookup table called `Page Table`.
-* The precise mechanism used for implementing this lookup table is acutally quite specific to the processor hardware being used, however, Windows implemets its common set of functionality uniformly across all the hardware platforms.
+* The precise mechanism used for implementing this lookup table is actually quite specific to the processor hardware being used, however, Windows implements its common set of functionality uniformly across all the hardware platforms.
 * A single physical page can be shared between two separate address spaces, and can have the same VA in each address space or it can have different VA in each address space.
-* Paging is simply a method of dividing up the linear address space into chunks. Pages are simply the name that we give to the chunks that result. 
+* Paging is simply a method of dividing up the linear address space into chunks. Pages are simply the name that we give to the chunks that result.
 * The size of these sections is referred to as the Page Size. On x86 systems, the standard page size is 4-KBytes.
 * A Large Page means that the page is larger than the standard size (2MB on PAE x86 or 4MB on non-PAE x86).
-* With large parges, TLB misses and page faults may be reduced, and there is a lower allocation cost (used by database applications).
+* With large pages, TLB misses and page faults may be reduced, and there is a lower allocation cost (used by database applications).
 * Physical Address Extension (PAE) is a processor feature that enables x86 processors to access more than 4 GB of physical memory on capable versions of Windows. Certain 32-bit versions of Windows Server running on x86-based systems can use PAE to access up to 64 GB or 128 GB of physical memory, depending on the physical address size of the processor. For details, see Memory Limits for Windows Releases.
 * The technology called 4-gigabyte tuning (4GT), also known as application memory tuning, or the /3GB switch, is one of two technologies that increase the amount of physical memory available to user mode applications. 4GT increases the portion of the virtual address space that is available to a process from 2 GB to up to 3 GB.
 * The Intel Itanium and x64 processor architectures can access more than 4 GB of physical memory natively and therefore do not provide the equivalent of PAE. PAE is used only by 32-bit versions of Windows running on x86-based systems.
@@ -92,13 +92,13 @@
 * When a PF occurs, the CPU transfers control to the registered page fault handler within the OS, in Windows, to the Memory Manager.
 * If the VA is valid and the process have the permissions to access that page, the memory manager must allocate a new physical page, then ask the I/O manager to read the data from disk into that new physical page. Only then, the PF is resolved.
 * Windows virtual memory implementation supports a bit in each virtual-to-physical page table entry that indicates if the page can be accessed from user mode.
-* Windows provides an additional bit to control access to a page called *read only* that indicates whather the page can be written.
+* Windows provides an additional bit to control access to a page called *read only* that indicates weather the page can be written.
 * The file cache consists of views into various mapped files and shares physical memory with the rest of the OS.
-* Virtual memory allows memory to be shared accross multiple processe, which is the capbility of two page tables to reference to the same physical memory.
+* Virtual memory allows memory to be shared across multiple process, which is the capability of two page tables to reference to the same physical memory.
 * An example of memory sharing would be sharing DLLs between two applications so that only one copy of the DLL is present in memory at any time.
 * Within a virtual page, there us a bit which indicates if the page is allowed to be shared.
-* There is no requirements that says, if there is two virtual references to the same physical page, the two vritual page table entries must contain the same attributes.
-* Copy-On-Write is a mechanism for allowing shared memory access when appropriate. 
+* There is no requirements that says, if there is two virtual references to the same physical page, the two virtual page table entries must contain the same attributes.
+* Copy-On-Write is a mechanism for allowing shared memory access when appropriate.
 * That means, as long as the page is not being modified, copy-on-write operates very much like any other shared memory page.
 * The only time it differs is when a process attempts to modify the content of that page, which leads to a #PF. Therefore, the memory manager after handling the exception and analyzing the cause of the exception, find out that the page has copy-on-write attribute, the memory manager copy then the current physical page into a new physical page and adjust the virtual page table entry to point to the new physical page. Both copy-on-write and read only attribute are cleared for that page.
 * Most of standard windows DLLs are built so they each use a separate load address. This mechanism maximizes the speed at which apps load. Otherwise, the  windows loader have to performs relocations which then breaks the sharing of the pages as they are maked as copy-on-write.
@@ -141,7 +141,7 @@
 
 #### The Registry
 * The Registry is nothing more than a database of configuration and administrative information about the operating system and related utilities.
-* Although the Registry is described as if it were a single component, it is in fact constructed by combining several independent components called `hives` into a single, coherent namespace. 
+* Although the Registry is described as if it were a single component, it is in fact constructed by combining several independent components called `hives` into a single, coherent namespace.
 * The Registry is organized into a series of different top-level keys. Each key represents a distinct type of information. In Windows NT, the standard top-level keys are as follows:
 	- HKEY_CLASSES_ROOT: This key indicates special handling for various file extensions.
 	- HKEY_CURRENT_USER: This key indicates configuration information for the current logged-on user.
@@ -149,8 +149,8 @@
 	- HKEY_LOCAL_MACHINE: Of interest to device driver writers, this key indicates system state.
 	- HKEY_USERS: This key provides local information on this machine about users.
 * Registry keys may in fact be links to other keys. While reading the contents of the Registry, these links point to other parts of the Registry. For example, the HKEY_CURRENT_USER key points to the correct entry in the HKEY_USERS portion of the Registry.
-* One technique you can use when managing wide strings is to maintain them by using the UNICODE_STRING structure, but ensure that there is an additional wide character at the end of the Buffer pointed to by the structure. 
-* In this case, the Length field in the structure indicates the size in bytes of the string stored within the Buffer , while the MaximumLength field will indicate a size of at least two bytes more than the Length {because it requires two bytes to store a single null wide character terminator).
+* One technique you can use when managing wide strings is to maintain them by using the UNICODE_STRING structure, but ensure that there is an additional wide character at the end of the Buffer pointed to by the structure.
+* In this case, the Length field in the structure indicates the size in bytes of the string stored within the Buffer , while the MaximumLength field will indicate a size of at least two bytes more than the Length (because it requires two bytes to store a single null wide character terminator).
 * For device driver developers, there are only a few keys of general interest within the Registry. These keys are located within the HKEY_LOCAL_MACHINE top-level key:
 - HARDWARE:  describes the current hardware configuration, including resources that have been reserved for use by a particular device by its device driver. This key is entirely dynamic and is reconstructed each time the system boots.
 - SOFTWARE: describes the configuration state and information for the various software packages installed on the system.
@@ -167,7 +167,7 @@
 * When the kernel switches from one thread to another thread, it stores the current thread's context, such as the contents of various CPU registers. The kernel then loads the new context, such as those CPU registers, of the next thread to run. This is done by the routine `KiSwapThread()`.
 * Another routine that is called to perform dispatching is `KiSwitchToThread()`. This function dispatches to a particular thread.
 * The code within the kernel that is responsible for dispatching control to a new thread always runs at or above IRQL __DISPATCH_LEVEL__. This is necessary because there are a number of intermediate states, such as when the registers for the threads are being restored, where it is not safe to allow for arbitrary *preemption*. Thus, we typically describe the dispatcher as running at IRQL __DISPATCH_LEVEL__.
-* A __priority__ is a numeric value that indicates the relative importance of a particular thread with respect to scheduling. 
+* A __priority__ is a numeric value that indicates the relative importance of a particular thread with respect to scheduling.
 * There are actually two priority fields:
 	- Priority. The value for this field is the current numeric value that will actually be used for scheduling.
 	- BasePriority. The value for this field indicates the minimum value for Priority. In other words, the OS can adjust the Priority of a given thread arbitrarily, as long as it is equal to or greater than the BasePriority value for that thread.
@@ -181,12 +181,12 @@
 * `thread`
 * `!pcr` describing the current state of this processor. From the PCR, you can see the value of CurrentThread (0x8058DBE0), NextThread (0x0), and IdleThread (0x80145A80)-these values were extracted from the KPRCB via the PCR.
 * Windows NT is a pre-emptive, multithreaded, and multitasking OS. It employs a traditional OS technique to provide this multitasking capability by associating a __quantum__ with each thread when it starts running. This quantum is the period of time that this particular thread will execute.
-* The precise value of the quantum for a given thread depends upon the particular version and type of Windows NT system. For example, on one Windows NT v4 system, the quantum for all threads on a server system was 120 milliseconds. 
+* The precise value of the quantum for a given thread depends upon the particular version and type of Windows NT system. For example, on one Windows NT v4 system, the quantum for all threads on a server system was 120 milliseconds.
 * When a thread fnishes its quantum and a new thread is scheduled to run, the thread has been __pre-empted__. A thread being pre-empted moves fom the running state to the ready state. This is different fom when a thread dispatches when a thread dispatches, it moves fom the running state to the waiting state.
 * When the OS pre-empts one thread so that another thread may run, the currently running thread transitions fom the running state to the ready state. For real-time threads, the OS does not adjust the Priority value. For dynamicthreads, the OS adjusts the Priority value by decreasing it by *PriorityDecrement+1*.
 
 #### Interrupt Request Levels and DPCs
-* IRQLs are the chief method used for __prioritizing__ OS activities within Windows NT. 
+* IRQLs are the chief method used for __prioritizing__ OS activities within Windows NT.
 * The relative priority of an activity within the Windows NT operating system is defined by its __Interrupt Request Level (IRQL)__.
 * The current processor's IRQL indicates the relative priority of the activity currently taking place on that CPU.
 * IRQL values are assigned to both sofware and hardware activities, with sofware IRQLs being lower than hardware IRQLs.
@@ -209,15 +209,15 @@
 * When code running at IRQL __DISPATCH_LEVEL__ or above may not take any __page faults__. This means that any such code must itself be __non-paged__, and must touch only data structures that are non-paged.
 * A vitally important point about __DIRQLs__ is that these IRQLs do not necessarily preserve the relative priorities that may be implied by a given bus's external interrupt signaling method. For example, the HAL has complete discretion in terms of how it maps IRQs (bus Interrupt ReQuest lines) to IRQLs.
 * The relationship between two IRQs assigned to two particular devices is not necessarily *preserved* when IRQLs are assigned to those devices. Whether a device with a more important IRQ is assigned a higher (that is, more important) IRQL is totally up to the HAL. Indeed, in most standard x86 multiprocessor HALs for systems that use APIC architectures, the reltionship of IRQ to IRQL is not preserved.
-* IRQL __HIGH_LEVEL__ is always defined as the highest IRQL on a Windows NT system. This IRQL is used for __NMI (Non-Maskable Interrupt)__ and other interrupts of very high priority. 
+* IRQL __HIGH_LEVEL__ is always defined as the highest IRQL on a Windows NT system. This IRQL is used for __NMI (Non-Maskable Interrupt)__ and other interrupts of very high priority.
 * In the exceedingly rare case in which a device driver needs to disable interrupts on a particular processor for a short period, the driver may raise its IRQL to HIGH_LEVEL. However, a device driver raising to IRQL HIGH_LEVEL is considered a very drastic step, and it is almost never required in Windows NT.
 * In addition to its use for running the NT Dispatcher, IRQL DISPATCH_LEVEL is also used for processing __Defrred Procedure Calls (DPCs)__.
 * DPCs are callbacks to routines to be run at IRQL DISPATCH_LEVEL. DPCs are typically requested from higher IRQLs to allow more extended, non-time-critical, processing to take place.
 * Use cases of DPC:
 	- Windows NT device drivers perform very little processing within their ISR. Instead, when a device interrupts (at DIRQL) and its driver determines that a significant amount of processing is required, the driver requests a DPC. The DPC request results in a specified driver function being called back at IRQL DISPATCH_LEVEL to perform the remainder of the required processing. By performing this processing at IRQL DISPATCH_LEVEL, the driver takes less time at DIRQL, and therefore decreases interrupt latency for all the other devices on the system.
 	- Another common use for DPCs is in timer routines. A driver may request to have a particular function be called to notify it that a certain period of time has elapsed (this is done using the `KeSetTimer()` function).
-* A DPC is described by a DPC Object `_KDPC`. 
-* A DPC Object may be allocated by a driver fom any non-pageable space (such as nonpaged pool). DPC objects are initialized by using the function `KeInitializeDpc()`. 
+* A DPC is described by a DPC Object `_KDPC`.
+* A DPC Object may be allocated by a driver fom any non-pageable space (such as nonpaged pool). DPC objects are initialized by using the function `KeInitializeDpc()`.
 * A request to execute a particular DPC routine is made by placing the DPC Object that describes that DPC routine into the DPC Queue of a given CPU, and then requesting an IRQL DISPATCH_LEVEL software interrupt (this is done using `KeInsertQueueDpc()` function).
 * As noted earlier in the chapter, IRQL DISPATCH_LEVEL is used both for dispatching and for processing the DPC Queue. In NT V4, when a DISPATCH_LEVEL interrupt is processed, the entire DPC Queue is __serviced first__ (by the microkernel), and then the Dispatcher is called to schedule the next thread to run. This is reasonable because the processing done within a DPC routine could change to alter the state of the thread scheduling database, for example, by making a previously waiting thread runnable.
 * A single DPC routine may be actively executing on multiple processors at the same time. There is absolutely no interlocking performed by the Microkernel to prevent this hence the importance of utilizing the proper set of multiprocessor synchronization mechanisms in drivers. Specifically, __spin locks__ must be used to serialize access to any data structures that must be accessed atomically within the driver's DPC if the driver's design is such that multiple DPCs can be in progress simultaneously.
@@ -232,7 +232,7 @@
 
 
 #### Multiprocessor Issues
-* Because Windows NT supports multiprocessing, all Kernel mode code must be multiprocessor-safe. Multiprocessor safety involves maintaining cache coherency among processors, virtual memory issues, and even interrupt handling. However, driver writers must be __careful__ to properly synchronize access to shared data structures. 
+* Because Windows NT supports multiprocessing, all Kernel mode code must be multiprocessor-safe. Multiprocessor safety involves maintaining cache coherency among processors, virtual memory issues, and even interrupt handling. However, driver writers must be __careful__ to properly synchronize access to shared data structures.
 * An appropriate Dispatcher Object, such as a __mutex__, can be used for synchronization to guard the shared data structure. This works fine, as long as all the threads that modify the data being shared execute only at __IRQL PASSIVE_LEVEL__ or __IRQL APC_LEVEL__. Thus, using a mutex would be a perfect solution for synchronizing access to data that is shared between two user threads because Usermode threads always execute at IRQL PASSIVE_LEVEL.
 * However, using a Dispatcher Object such as a mutex would not be possible if any thread that modifies the shared data is running at IRQL DISPATCH_LEVEL or above.
 * This is due to the fact that running at IRQL DISPATCH_LEVEL or higher blocks recognition of the DISPTACH_LEVEL interrupt that is used to trigger the Dispatcher. Thus, it is impossible for a thread running at IRQL DISPATCH_LEVEL or above to yield control of the processor to wait, in case the Dispatcher Object is not available.
@@ -267,11 +267,11 @@
 *  Most objects used within the I/O Subsystem are considered __partially opaque__. This means that a subset of fields within the object can be directly manipulated by kernel modules, including drivers. Examples of partially opaque objects include Device Objects and Driver Objects.
 * A few objects used within the I/O Subsystem (such as DPC Objects or Interrupt Objects) are considered __fully opaque__. This means that Kernel mode modules (other than the creating module) must call functions that understand and manipulate the fields within the object.
 * Structures commonly used within the I/O subsystem: <p align="center"><img src="https://i.snag.gy/p6OI49.jpg"></p>
-* The File Object is defined by the NT structure `FILE_OBJECT`. A File Object represents a single open instance of a file, device, directory, socket, named pipe, mail slot, or other similar entity. 
+* The File Object is defined by the NT structure `FILE_OBJECT`. A File Object represents a single open instance of a file, device, directory, socket, named pipe, mail slot, or other similar entity.
 * The Driver Object describes where a driver is loaded in physical memory, the driver's size, and its main entry points. The format of a Driver Object is defined by the NT structure `DRIVER_OBJECT`.
 * The Device Object represents a physical or logical device that can be the target of an I/O operation. The format of the Device Object is defined by the NT structure `DEVICE_OBJECT`.
 * While a Device Object may be created at any time by a driver by calling `IoCreateDevice()` , Device Objects are normally created when a driver is first loaded.
-* When a driver creates a Device Object, it also specifies the size of the __Device Extension__ to be created. 
+* When a driver creates a Device Object, it also specifies the size of the __Device Extension__ to be created.
 * The Device Extension is a per-device area that is private to the device driver. The driver can use this area to store anything it wants, including device statistics, queues of requests, or other such data. The Device Extension is typically the main global data storage area.
 * Both the Device Object and Device Extension are created in non-paged pool.
 * The Interrupt Object is created by the I/O Manager, and is used to connect a driver's interrupt service routine to a given interrupt vector. The structure, `KINTERRUPT`, is one of the few fully opaque structures used in the I/O Subsystem.
@@ -291,8 +291,8 @@
 	- Windows NT categorizes Busmaster DMA devices as being one of two types. The specific functioning of a device's hardware determines into which category a given device falls. The two categories are:
 	- __Packet-Based DMA devices__ which are the most common type of Busmaster DMA device. Packet-Based DMA devices typically transfer data to/from __different logical addresses__ for each transfer, and __Common-Buffer DMA devices__ which typically utilize __the same buffer__ for all transfer operations. Many network interface cards are Common-Buffer DMA devices.
 	- __Packet-Based DMA devices__ which are the most common type of Busmaster DMA device. Packet-Based DMA devices typically transfer data to/from __different logical addresses__ for each transfer, and __Common-Buffer DMA devices__ which typically utilize __the same buffer__ for all transfer operations. Many network interface cards are Common-Buffer DMA devices.
-* DMA operations from devices on a Windows NT system are performed to __logical addresses__. These logical addresses are managed by the HAL, and correlate to physical host memory addresses in a hardware-specific and HAL-specific manner. 
-* Logical addresses are translated to host memory physical addresses by the HAL through the use of _map registers_. 
+* DMA operations from devices on a Windows NT system are performed to __logical addresses__. These logical addresses are managed by the HAL, and correlate to physical host memory addresses in a hardware-specific and HAL-specific manner.
+* Logical addresses are translated to host memory physical addresses by the HAL through the use of _map registers_.
 * A device bus has a logical address space, managed by the HAL, which is different from the physical address space used for host memory. When processing a DMA transfer request, a device driver calls the I/O Manager and HAL (using the function `IoMapTransfer ()`) to allocate a set of map registers, and program them appropriately to perform the DMA data transfer.
 * s a logical address space, managed by the HAL, which is different from the physical address space used for host memory. When processing a DMA transfer request, a device driver calls the I/O Manager and HAL (using the function `IoMapTransfer ()`) to allocate a set of map registers, and program them appropriately to perform the DMA data transfer.
 * It is important to understand that map registers are part of the HAL's standard abstraction of system facilities. How the logical addresses used in DMA operations are implemented, including how these logical addresses are translated to physical addresses and thus even how map registers themselves are implemented, is entirely a function of how a particular HAL is implemented on a given platform.
@@ -301,7 +301,7 @@
 * More-sophisticated DMA devices support an optional feature called __scatter/gather__. This feature, also known as _DMA chaining_ allows the device to be programmed with multiple pairs of base addresses and lengths simultaneously. Thus, even a logically fragmented requestor's buffer can be described to the DMA device by its driver in one operation.
 * To help reduce the overhead required to support devices that do not implement scatter/gather, the HAL implements a facility known as __system scatter/gather__. To implement this feature, the HAL utilizes its map registers to create a single, contiguous, logical address range that maps to the requestor's noncontiguous buffer in physical memory. This contiguous logical address range can then be addressed by a device that does not support scatter/gather with a single logical base address and length.
 * __System DMA Devices__ provides the capability for a device on the system to use a common DMA controller to perform transfers between itself and host memory.
-	- This capability results in a device that is inexpensive (like a PIO device), but that can move data without using host CPU cycles (like Busmaster DMA). 
+	- This capability results in a device that is inexpensive (like a PIO device), but that can move data without using host CPU cycles (like Busmaster DMA).
 	- System DMA, as it is supported in Windows NT, is very much like Busmaster DMA, with the following exceptions:
 		- System DMA devices share a DMA controller that is provided as part of the system, whereas Busmaster DMA devices have a dedicated DMA controller built into their devices.
 		- System DMA devices do not support scatter/gather.
@@ -310,7 +310,7 @@
 #### How I/O Requests Are Described
 * Windows NT describes I/O requests by using a packet-based architecture. In this approach, each I/O request to be performed can be described by using a single __I/O Request Packet__ (IRP).
 * When an I/O system service is issued (such as a request to create or read froma file), the I/O Manager services that request by building an IRP describing the request, and then passes a pointer to that IRP to a device driver to begin processing the request.
-*  The IRP is allocated fom nonpaged space, using either a preallocated IRP in one of the I/O Manager's lookaside lists, or by allocating the IRP directly fom nonpaged pool. 
+*  The IRP is allocated fom nonpaged space, using either a preallocated IRP in one of the I/O Manager's lookaside lists, or by allocating the IRP directly fom nonpaged pool.
 * An IRP contains all the information necessary to fully describe an I/O request to the I/O Manager and device drivers. The IRP is a standard NT structure of type "IRP.": <p align="center"><img src="https://i.snag.gy/cnjJym.jpg"  width="300px" height="auto"></p>
 * As you can see in the figure above, each I/O Request Packet may be thought of as having two parts: A __fixed__ part and an I/O Stack.
 * The fixed part of the IRP contains information about the request that either does not vary from driver to driver, or it does not need to be preserved when the IRP is passed from one driver to another.
@@ -326,10 +326,10 @@
 	- If a driver chooses Direct I/O, any data buffer associated with read or write I/O requests will be described by the I/O Manager by using an opaque structure called a Memory Descriptor List (MDL).
 	- MDL is capable of describing a single data buffer that is contiguous in virtual memory, but is not necessarily physically contiguous.
 	- An MDL is designed to make it particularly fast and easy to get the physical base addresses and lengths of the fragments that comprise the data buffer: <p align="center"><img src="https://i.snag.gy/9OXvp4.jpg"  width="400px" height="auto"></p>
-	- The I/O and Memory Managers provide functions for getting information about a data buffer using an MDL as `MmGetSystemAddressForMdl()`, `MmMapLockedPages()`, `MmGetMdlVirtualAddress`, `MmGetMdlByteCount` and `MmGetMdlByteOffset`.  
+	- The I/O and Memory Managers provide functions for getting information about a data buffer using an MDL as `MmGetSystemAddressForMdl()`, `MmMapLockedPages()`, `MmGetMdlVirtualAddress`, `MmGetMdlByteCount` and `MmGetMdlByteOffset`.
 * _Describing Data Buﬀers with Buffered I/O_:
 	- In this scheme, an intermediate buffer in system space is used as the data buffer. The I/O Manager is responsible for moving the data between the intermediate buffer and the requestor's original data buffer: <p align="center"><img src="https://i.snag.gy/LnWbZo.jpg"  width="400px" height="auto"></p>.
-	- To prepare a Buffered  request, the I/O Manager checks to ensure that the caller has appropriate access to the entire length of the data buffer, just as it did for Direct I/O. 
+	- To prepare a Buffered  request, the I/O Manager checks to ensure that the caller has appropriate access to the entire length of the data buffer, just as it did for Direct I/O.
 	- The  Manager next allocates a system buﬀer fom the nonpaged pool with a size that is (at least) equal to that of the data buffer.
 	- Because the address of the intermediate buffer corresponds to a location in the system's nonpaged pool, the address is usable by the driver in an arbitrary thread context.
 	- Buﬀered I/O is most ofen used by drivers controlling programmed I/O devices that use small data transfers. In this case, it is usually very convenient to have a requestor's data described by using a system virtual address.
@@ -386,7 +386,7 @@
 	- Mini-drivers. <p align="center"><img src="https://i.imgur.com/crRu51r.png"  width="400px" height="auto"></p>
 * __File System drivers__ exist at the top of the NT Kernel mode driver stack. File System drivers play a special role in Windows NT because they are tightly coupled with the NT Memory and Cache Manager subsystems.
 * File System drivers may implement a physical fle system, such as NTFS or FAT; however, they may also implement a distributed or networked facility.
-* __Intermediate drivers__ form the middle layer of the NT driver hierarchy, sitting below File System drivers and above Device drivers. 
+* __Intermediate drivers__ form the middle layer of the NT driver hierarchy, sitting below File System drivers and above Device drivers.
 * Intermediate drivers provide either a "value-added" feature (such as mirroring or disk-level encryption) or class processing for devices. In either case, Intermediate drivers rely upon the Device drivers below them in the NT driver hierarchy for access to a physical device.
 * The most common type of Intermediate driver is the _Class driver_. A Class driver typically performs processing for a category of device, having common attributes, which is physically accessed via a separately addressable shared bus. For example, the Disk Class driver performs processing for disk-type devices that are located on a SCSI bus.
 * __Device drivers__ interface to hardware via the Hardware Abstraction Layer (HAL). In general, device drivers control one or more peripheral devices, in
@@ -453,7 +453,7 @@ created by a different driver. The result of this is that IRPs destined for the 
   * Drivers that are the top driver stack.
   * I/O Manager restricts most operations, including read and write operations, to File System drivers only.
   * However, one operation for which the I/O Manager does support Fast I/O for non-File System drivers is IRP_MJ_DEVICE_CONTROL.
-  *  Driver must be able to completely process the request in the context of the calling thread.
+  * Driver must be able to completely process the request in the context of the calling thread.
 
 ### Driver Structure
 

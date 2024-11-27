@@ -386,15 +386,41 @@ THREAD 85fdeb78 Cid 0ec8.0218 Teb: 7ff72000 Win32Thread: 00000000 READY
 ### Priority Levels
 
 - Windows uses **32 priority levels**, ranging from 0 through 31. These values divide up as follows:
-  - Sixteen real-time levels (16 through 31)
-  - Sixteen variable levels (0 through 15), out of which level 0 is reserved for the zero page thread.
+  - Sixteen **real-time** levels (16 through 31)
+  - Sixteen **variable levels** (0 through 15), out of which level 0 is reserved for the zero page thread.
 <p align="center"><img src="./assets/thread-priority-levels.png" width="300px" height="auto"></p>
 
-- The Windows API first organizes processes by the priority class (`PROCESS_PRIORITY_CLASS_`) to which they are assigned at creation: Real-time (4), High (3), Above Normal (7), Normal (2), Below Normal (5), and Idle (1).
-- It then assigns a **relative priority** of the individual threads within those processes. Here, the numbers represent a **priority delta** that is applied to the **process base priority**: Time-critical (15), Highest (2), Above-normal (1), Normal (0), Below-normal (–1), Lowest (–2), and Idle (–15)
+- The Windows API first organizes processes by the priority class (`PROCESS_PRIORITY_CLASS_`) to which they are assigned at creation:
+  - ▶️ Real-time (4), High (3), Above Normal (7), Normal (2), Below Normal (5), and Idle (1).
+- It then assigns a **relative priority** of the individual threads within those processes. Here, the numbers represent a **priority delta** that is applied to the **process base priority**:
+  - ▶️ Time-critical (15), Highest (2), Above-normal (1), Normal (0), Below-normal (–1), Lowest (–2), and Idle (–15)
 - ▶️ Therefore, in the Windows API, each thread has a **base priority** that is a function of its **process priority class** and its **relative thread priority**.
 - For example, a “Highest” thread will receive a thread base priority of two levels higher than the base priority of its process.
 - Whereas a process has only a single base priority value, each thread has two priority values: **current and base**.
-- Scheduling decisions are made based on the **current** priority. As explained in the
-following section on **priority boosting**, the system under certain circumstances increases the priority of threads in the **dynamic** range (0 through 15) for brief periods
-- Windows never adjusts the priority of threads in the **real-time** range (16 through 31), so they always have the same base and current priority.
+- Scheduling decisions are made based on the **current** priority. As explained in the following section on **priority boosting**, the system under certain circumstances increases the priority of threads in the **dynamic** range (0 through 15) for brief periods.
+- Windows never adjusts the priority of threads in the **real-time** range (16 through 31), so they always have the **same base** and **current priority**.
+
+### Real-Time Priorities
+
+- You must have the increase scheduling priority **privilege** to enter the real-time range.
+- Many important Windows **KM system threads** run in the real-time priority range.
+- Using standard API `SetThreadPriority` (which calls the native `NtSetInformationThread` with `ThreadBasePriority` information class) allows priorities to remain only in the same range ▶️ We can't mix thread priorities with documented APIs.
+- However, by calling this API with `ThreadActualBasePriority` information class, the kernel base priority for the thread can be directly set, including in the dynamic range for a real-time process 😮‍💨.
+
+#### Interrupt Levels vs. Priority Levels
+
+- ⚠️ User-mode code always runs at passive level. Because of this, no user-mode thread, regardless of its priority, can ever **block hardware interrupts** (although high-priority, real-time threads can block the execution of important system threads) ‼️
+- ⭐ If a thread does raise IRQL to dispatch level or above, no further thread-scheduling behavior will occur on its processor until it lowers IRQL below dispatch level. A thread executing at dispatch level or above blocks the activity of the thread scheduler and prevents thread context switches on its processor.
+
+### Thread States
+
+The thread states are as follows:
+- **Ready**: A thread in the ready state is waiting to execute.
+- **Deferred ready** This state is used for threads that have been selected to run on a **specific processor** but have not actually started running there This state exists so that the kernel can minimize the amount of time the per-processor lock on the scheduling database is held.
+- **Standby** A thread in the standby state has been **selected to run next** on a particular processor. When the correct conditions exist, the dispatcher performs a context switch to this thread. **Only one thread** can be in the standby state for each processor on the system.
+- **Running**: Once the dispatcher performs a context switch to a thread, the thread enters the running state and executes The thread’s execution continues until its quantum ends (and another thread at the same priority is ready to run), it is **preempted** by a **higher priority** thread, it terminates, it **yields** execution (`SwitchToThread`), or it voluntarily enters the waiting state.
+- **Waiting**: A thread can enter the waiting state in several ways: a thread can **voluntarily** wait for an object to **synchronize** its execution, the OS can wait on the thread’s behalf (such as to resolve a paging I/O), or an environment subsystem can direct the thread to suspend itself. When the thread’s wait ends, depending on the priority, the thread either begins running immediately or is moved back to the ready state.
+- **Transition**: A thread enters the transition state if it is ready for execution but its **kernel stack is paged out** of memory. Once its kernel stack is brought back into memory, the thread enters
+the **ready** state.
+- **Terminated**: When a thread finishes executing, it enters the terminated state.
+- **Initialized**: This state is used internally while a thread is **being created**.

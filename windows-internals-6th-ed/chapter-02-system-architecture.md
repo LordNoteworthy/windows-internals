@@ -394,7 +394,7 @@ Times -- Dpc    00000012 Interrupt 00000012
 #### System Idle Process
 
 - this process (as well as the process named System) isn’t running a real user-mode image.
-- its name differs from utility to utility (because of implementation details)
+- its name differs from utility to utility (because of implementation details).
 
 #### System Process and System Threads
 
