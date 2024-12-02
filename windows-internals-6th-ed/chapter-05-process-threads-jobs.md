@@ -77,25 +77,25 @@ fields as long as the pointer is known.
 <details><summary>Process Attributes:</summary>
 
 
-| Native Attribute |  Equivalent Windows Attribute | Type | Description |
-|------------------|-------------------------------|------|-------------|
-| PS_CP_PARENT_PROCESS | PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. Also used when elevating | Input | Handle to the parent process |
-| PS_CP_DEBUG_OBJECT   | N/A – used when using DEBUG_PROCESS as a flag | Input | Debug object if process is being started debugged |
-| PS_CP_PRIMARY_TOKEN  | N/A – used when using `CreateProcessAsUser/WithToken` | Input | Process token if `CreateProcessAsUser` was used |
-| PS_CP_CLIENT_ID      | N/A – returned by Win32 API as a parameter | Output | Returns the TID and PID of the initial thread and the process |
-| PS_CP_TEB_ADDRESS    | N/A – internally used and not exposed | Output |  Returns the address of the TEB for the initial thread |
-| PS_CP_FILENAME       | N/A – used as a parameter in `CreateProcess` API | Input | Name of the process that should be created |
-| PS_CP_IMAGE_INFO     | N/A – internally used and not exposed | Output | Returns `SECTION_IMAGE_INFORMATION`, which contains information on the version, flags, and subsystem of the executable, as well as the stack size and entry point |
-| PS_CP_MEM_RESERVE    | N/A – internally used by SMSS and CSRSS | Input | Array of virtual memory reservations that should be made during initial process address space creation, allowing guaranteed availability because no other allocations have taken place yet |
-| PS_CP_PRIORITY_CLASS | N/A – passed in as a parameter to the CreateProcess API | Input | Priority class that the process should be given |
-| PS_CP_ERROR_MODE     | N/A – passed in through `CREATE_DEFAULT_ERROR_MODE` flag | Input | Hard error-processing mode for the process |
-| PS_CP_STD_HANDLE_INFO| | Input | Specifies if standard handles should be duplicated, or if new handles should be created |
-| PS_CP_HANDLE_LIST    | `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` | Input | List of handles belonging to the parent process that should be inherited by the new process|
-| PS_CP_GROUP_AFFINITY | `PROC_THREAD_ATTRIBUTE_GROUP_AFFINITY` | Input | Processor group(s) the thread should be allowed to run on |
-| PS_CP_PREFERRED_NODE | `PROC_THREAD_ATTRIBUTES_PRFERRED_NODE` | Input | Preferred (ideal) node that should be associated with the process. It affects the node on which the initial process heap and thread stack will be created |
-| PS_CP_IDEAL_PROCESSOR| `PROC_THREAD_ATTTRIBUTE_IDEAL_PROCESSOR` | Input | Preferred (ideal) processor that the thread should be scheduled on |
-| PS_CP_UMS_THREAD     | `PROC_THREAD_ATTRIBUTE_UMS_THREAD` | Input | Contains the UMS attributes, completion list, and context |
-| PS_CP_EXECUTE_OPTIONS| `PROC_THREAD_MITIGATION_POLICY` | Input | Contains information on which mitigations (SEHOP, ATL Emulation, NX) should be enabled/disabled for the process |
+| Native Attribute      | Equivalent Windows Attribute                                   | Type   | Description                                                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PS_CP_PARENT_PROCESS  | PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. Also used when elevating | Input  | Handle to the parent process                                                                                                                                                               |
+| PS_CP_DEBUG_OBJECT    | N/A – used when using DEBUG_PROCESS as a flag                  | Input  | Debug object if process is being started debugged                                                                                                                                          |
+| PS_CP_PRIMARY_TOKEN   | N/A – used when using `CreateProcessAsUser/WithToken`          | Input  | Process token if `CreateProcessAsUser` was used                                                                                                                                            |
+| PS_CP_CLIENT_ID       | N/A – returned by Win32 API as a parameter                     | Output | Returns the TID and PID of the initial thread and the process                                                                                                                              |
+| PS_CP_TEB_ADDRESS     | N/A – internally used and not exposed                          | Output | Returns the address of the TEB for the initial thread                                                                                                                                      |
+| PS_CP_FILENAME        | N/A – used as a parameter in `CreateProcess` API               | Input  | Name of the process that should be created                                                                                                                                                 |
+| PS_CP_IMAGE_INFO      | N/A – internally used and not exposed                          | Output | Returns `SECTION_IMAGE_INFORMATION`, which contains information on the version, flags, and subsystem of the executable, as well as the stack size and entry point                          |
+| PS_CP_MEM_RESERVE     | N/A – internally used by SMSS and CSRSS                        | Input  | Array of virtual memory reservations that should be made during initial process address space creation, allowing guaranteed availability because no other allocations have taken place yet |
+| PS_CP_PRIORITY_CLASS  | N/A – passed in as a parameter to the CreateProcess API        | Input  | Priority class that the process should be given                                                                                                                                            |
+| PS_CP_ERROR_MODE      | N/A – passed in through `CREATE_DEFAULT_ERROR_MODE` flag       | Input  | Hard error-processing mode for the process                                                                                                                                                 |
+| PS_CP_STD_HANDLE_INFO |                                                                | Input  | Specifies if standard handles should be duplicated, or if new handles should be created                                                                                                    |
+| PS_CP_HANDLE_LIST     | `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`                            | Input  | List of handles belonging to the parent process that should be inherited by the new process                                                                                                |
+| PS_CP_GROUP_AFFINITY  | `PROC_THREAD_ATTRIBUTE_GROUP_AFFINITY`                         | Input  | Processor group(s) the thread should be allowed to run on                                                                                                                                  |
+| PS_CP_PREFERRED_NODE  | `PROC_THREAD_ATTRIBUTES_PRFERRED_NODE`                         | Input  | Preferred (ideal) node that should be associated with the process. It affects the node on which the initial process heap and thread stack will be created                                  |
+| PS_CP_IDEAL_PROCESSOR | `PROC_THREAD_ATTTRIBUTE_IDEAL_PROCESSOR`                       | Input  | Preferred (ideal) processor that the thread should be scheduled on                                                                                                                         |
+| PS_CP_UMS_THREAD      | `PROC_THREAD_ATTRIBUTE_UMS_THREAD`                             | Input  | Contains the UMS attributes, completion list, and context                                                                                                                                  |
+| PS_CP_EXECUTE_OPTIONS | `PROC_THREAD_MITIGATION_POLICY`                                | Input  | Contains information on which mitigations (SEHOP, ATL Emulation, NX) should be enabled/disabled for the process                                                                            |
 
 </details>
 
@@ -109,15 +109,15 @@ fields as long as the pointer is known.
 
 <details><summary>Decision Tree for Stage 1 of CreateProcess:</summary>
 
-| If the Image ... | Create State Code | This Image Will Run |  ... and This Will Happen |
-| ---------------- | ----------------- | ------------------- | ------------------------- |
-| Is a POSIX executable file | PsCreateSuccess | `Posix.exe` | CreateProcess restarts Stage 1 |
-| Is an MS-DOS application with an exe, com, or pif extension | PsCreateFailOnSectionCreate | `Ntvdm.exe` | CreateProcess restarts Stage 1 |
-| Is a Win16 application | PsCreateFailOnSectionCreate | `Ntvdm.exe` | CreateProcess restarts Stage 1|
-| Is a Win64 application on a 32-bit system (or a PPC, MIPS, or Alpha Binary) | PsCreateFailMachineMismatch  | N/A | CreateProcess will fail |
-| Has a Debugger key with another image name | PsCreateFailExeName | Name specified in the Debugger key | CreateProcess restarts Stage 1 |
-| Is an invalid or damaged Windows EXE | PsCreateFailExeFormat | N/A | CreateProcess will fail Cannot be opened PsCreateFailOnFileOpen N/A CreateProcess will fail |
-| Is a command procedure (application with a bat or cmd extension) | PsCreateFailOnSectionCreate | `Cmd.exe` | CreateProcess restarts Stage 1 |
+| If the Image ...                                                            | Create State Code           | This Image Will Run                | ... and This Will Happen                                                                    |
+| --------------------------------------------------------------------------- | --------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| Is a POSIX executable file                                                  | PsCreateSuccess             | `Posix.exe`                        | CreateProcess restarts Stage 1                                                              |
+| Is an MS-DOS application with an exe, com, or pif extension                 | PsCreateFailOnSectionCreate | `Ntvdm.exe`                        | CreateProcess restarts Stage 1                                                              |
+| Is a Win16 application                                                      | PsCreateFailOnSectionCreate | `Ntvdm.exe`                        | CreateProcess restarts Stage 1                                                              |
+| Is a Win64 application on a 32-bit system (or a PPC, MIPS, or Alpha Binary) | PsCreateFailMachineMismatch | N/A                                | CreateProcess will fail                                                                     |
+| Has a Debugger key with another image name                                  | PsCreateFailExeName         | Name specified in the Debugger key | CreateProcess restarts Stage 1                                                              |
+| Is an invalid or damaged Windows EXE                                        | PsCreateFailExeFormat       | N/A                                | CreateProcess will fail Cannot be opened PsCreateFailOnFileOpen N/A CreateProcess will fail |
+| Is a command procedure (application with a bat or cmd extension)            | PsCreateFailOnSectionCreate | `Cmd.exe`                          | CreateProcess restarts Stage 1                                                              |
 
 </details>
 
@@ -424,3 +424,40 @@ The thread states are as follows:
 the **ready** state.
 - **Terminated**: When a thread finishes executing, it enters the terminated state.
 - **Initialized**: This state is used internally while a thread is **being created**.
+- Thread States and Transitions:
+
+|                | Init                                     | Ready                              | Running                                                            | Standby                              | Terminated | Waiting                               | Transition                     | Deferred Ready                                                            | Comment                                                                                          |
+| -------------- | ---------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ | ------------------------------------ | ---------- | ------------------------------------- | ------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Init           |                                          |                                    |                                                                    |                                      |            |                                       |                                |                                                                           | A thread becomes initialized during the first few moments of its creation (`KeStartThread`).     |
+| Ready          |                                          |                                    |                                                                    |                                      |            |                                       |                                | A thread is added in the dispatcher-ready database of its ideal processor |                                                                                                  |
+| Running        |                                          | Selected by `KiSearchForNewThread` |                                                                    | Picked up for execution by local CPU |            | Preemption after wait satisfaction    |                                |                                                                           |                                                                                                  |
+| Standby        |                                          | Selected by `KiSelectNextThread`   |                                                                    |                                      |            |                                       |                                | Selected by `KiDeferredReadyThread` for remote CPU                        |                                                                                                  |
+| Terminated     | Killed before `PspInsertThread` finished |                                    | Killed                                                             |                                      |            |                                       |                                |                                                                           | A thread can kill only itself. It must be in the Running state before entering KeTerminateThread |
+| Waiting        |                                          |                                    | Thread enters a wait                                               |                                      |            |                                       |                                |                                                                           | Only running threads can wait.                                                                   |
+| Transition     |                                          |                                    |                                                                    |                                      |            | Kernel stack no longer resident       |                                |                                                                           | Only waiting threads can transition.                                                             |
+| Deferred Ready | Last step in `PspInsertThread`           | Affinity change                    | Thread becomes preempted (if old processor is no longer available) | Affinity change                      |            | Wait satisfaction (but no preemption) | Kernel stack swap-in completed |                                                                           |                                                                                                  |
+
+<p align="center"><img src="./assets/simplified-thread-state-change.png" width="500px" height="auto"></p>
+
+### Dispatcher Database
+
+- To make thread-scheduling decisions, the kernel maintains a set of data structures known collectively as the **dispatcher database**.
+- The dispatcher database keeps track of which threads are waiting to execute and which processors are executing which threads.
+- The dispatcher **ready queues** (`PRCB.DispatcherReadyListHead`) contain the threads that are in the ready state, waiting to be scheduled for execution. There is one queue for each of the 32 priority levels.
+- To speed up the selection of which thread to run or preempt, Windows maintains a 32-bit **bit mask** called the **ready summary** (`PRCB.ReadySummary`). Each bit set indicates one or more threads in the ready queue for that priority level 🧠.
+
+<p align="center"><img src="./assets/dispatcher-database.png" width="500px" height="auto"></p>
+
+- The dispatcher database is synchronized by raising IRQL to `DISPATCH_LEVEL`. Raising IRQL in this way prevents other threads from interrupting thread dispatching on the processor because threads normally run at IRQL 0 or 1.
+
+### Quantum
+
+- If a thread completes its quantum and there are no other threads at its priority, Windows permits the thread to run for another quantum.
+- The **clock interval** is the time between periodic "ticks" (interrupts) sent by the hardware to the CPU.
+- On **client** versions of Windows, threads run by default for **2 clock intervals**; on **server** systems, by default, a thread runs for **12 clock intervals**.
+- The length of the clock interval varies according to the hardware platform:
+  - most x86 uniprocessors is about **10 milliseconds**.
+  - most x86 and x64 multiprocessors it is about **15 milliseconds**.
+- This clock interval is stored in the kernel variable `KeMaximumIncrement` as **hundreds of nanoseconds**.
+- Because thread run-time accounting is based on **processor cycles**, although threads still run in **units of clock intervals**, the system does not use the count of clock ticks as the deciding factor for
+how long a thread has run and whether its quantum has expired 🤔
