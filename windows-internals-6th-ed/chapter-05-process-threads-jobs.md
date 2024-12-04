@@ -453,11 +453,32 @@ the **ready** state.
 ### Quantum
 
 - If a thread completes its quantum and there are no other threads at its priority, Windows permits the thread to run for another quantum.
-- The **clock interval** is the time between periodic "ticks" (interrupts) sent by the hardware to the CPU.
+- 📌 The **clock interval** is the period at which the OS's scheduler interrupts to perform tasks like managing threads, updating timers, or checking system state.
 - On **client** versions of Windows, threads run by default for **2 clock intervals**; on **server** systems, by default, a thread runs for **12 clock intervals**.
 - The length of the clock interval varies according to the hardware platform:
   - most x86 uniprocessors is about **10 milliseconds**.
   - most x86 and x64 multiprocessors it is about **15 milliseconds**.
 - This clock interval is stored in the kernel variable `KeMaximumIncrement` as **hundreds of nanoseconds**.
-- Because thread run-time accounting is based on **processor cycles**, although threads still run in **units of clock intervals**, the system does not use the count of clock ticks as the deciding factor for
-how long a thread has run and whether its quantum has expired 🤔
+- 🧠 `clock interval != processor cycle` (is a single tick of the processor's clock, representing the smallest unit of computation time, **0.33 nanoseconds** in 3Ghz CPU).
+- Because thread run-time **accounting** is based on **processor cycles**, although threads still run in **units of clock intervals**, the system does not use the count of clock ticks as the deciding factor for how long a thread has run and whether its quantum has expired 🤔
+- They instead run for a **quantum target**, which represents an estimate of what the number of CPU clock cycles the thread has consumed should be when its turn would be given up.
+
+### Quantum Accounting
+
+- The quantum reset value is stored in terms of actual quantum units, which are then multiplied by the number of **clock cycles per quantum** (*KiCyclesPerClockQuantum*), resulting in the **quantum target**.
+- As a thread runs, CPU clock cycles are charged at different events (context switches, interrupts, and certain scheduling decisions):
+  - If at a clock interval timer interrupt, the number of CPU clock cycles charged has reached (or passed) the quantum target, quantum end processing is triggered.
+- Internally, a **quantum unit** is represented as 1/3 of a clock tick (`1 clock tick = 3 quantum`).
+- This means that on client Windows systems, threads, by default, have a quantum reset value of 6 (2 * 3), and that server systems have a quantum reset value of 36 (12 * 3).
+
+<details><summary>🔭 EXPERIMENT: Determining the Clock Cycles per Quantum:</summary>
+
+- Obtain your processor frequency as Windows has detected it: `!cpuinfo` and convert the number to Hz.
+- Obtain the clock interval on your system by using **clockres** and convert the obtained number from ms -> s.
+- Multiply this count by the number of cycles.
+- Remember that each quantum unit is one-third of a clock interval, so divide the number of cycles by three.
+- ▶️ This is the number of clock cycles each quantum unit should take on a system running at X MHz with a clock interval of around 15 ms.
+- To verify your calculation, dump the value of `KiCyclesPerClockQuantum` on your system - it should match with: `lkd> dd nt!KiCyclesPerClockQuantum L1`
+</details>
+
+
