@@ -481,4 +481,27 @@ the **ready** state.
 - To verify your calculation, dump the value of `KiCyclesPerClockQuantum` on your system - it should match with: `lkd> dd nt!KiCyclesPerClockQuantum L1`
 </details>
 
+### Controlling the Quantum
 
+- You can change the thread quantum for all processes, but you can choose only one of two settings:
+  - **short, variable quantums** (2 clock ticks, which is the default for **client** machines) or
+  - **long, fixed quantums** (12 clock ticks, which is the default for **server** systems, background/server-style workload).
+
+#### Variable Quantums
+
+When variable quantums are enabled, the system uses the `PspVariableQuantums` table to manage thread execution times. This table is loaded into the `PspForegroundQuantum` table, which is used by the `PspComputeQuantum()`. The function assigns a quantum index based on whether a process is a **foreground process** (one containing the thread that owns the foreground window).
+- For **background** processes, an index of 0 is chosen, corresponding to the **default thread quantum**.
+- For **foreground** processes, the quantum index is determined by the p**riority separation** value, which defines the priority boost applied to foreground threads. This boost increases the thread's quantum: for each additional priority level (up to 2), an extra quantum is added.
+
+By default, Windows sets the maximum **priority boost** for foreground threads (priority separation = 2), resulting in quantum index 2. This gives foreground threads two extra quantums, for a total of three quantums.
+
+Thus, when a **window is brought** into the **foreground** on a client system, all the threads in the process containing the thread that owns the foreground window have their **quantums tripled** !
+
+#### Quantum Settings Registry Value
+
+
+- The user interface to control quantum settings described earlier modifies the registry value: `HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl\Win32PrioritySeparation`
+-  This value consists of 6 bits divided into the three 2-bit fields:
+   -  **Short vs Long**: A value of 1 specifies long quantums, and 2 specifies short ones. A setting of 0 or 3 indicates that the default appropriate for the system will be used.
+   -  **Variable vs Fixed**: A setting of 1 means to enable the variable quantum table based on the algorithm shown in the “Variable Quantums” section. A setting of 0 or 3 means that the default appropriate for the system will be used.
+   -  **Priority Separation**: This field (stored in the kernel variable `PsPrioritySeparation`) defines the priority separation (up to 2).
